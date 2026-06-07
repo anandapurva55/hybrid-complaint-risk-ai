@@ -1,0 +1,102 @@
+[
+  {
+    "customer_id": "C001",
+    "model_outputs": {
+      "classical_score": 0.026,
+      "cnn_score": 0.4,
+      "rnn_score": 0.005,
+      "final_score": 0.132,
+      "risk_level": "low"
+    },
+    "llm_explanation": {
+      "summary": "The complaint text is a positive review, expressing satisfaction with the product's color and fit. The models generally indicate a very low probability of this being a negative complaint.",
+      "recommended_action": "No immediate action required, process as a positive customer feedback.",
+      "reason": "The sentiment of the text is overwhelmingly positive, and the final model score is low (0.132), indicating it is not a complaint. However, there is a notable disagreement among individual model scores.",
+      "human_review_required": true,
+      "risk_notes": "The risk level is 'low', but there is a strong disagreement between the model scores. The CNN model output (0.4) is significantly higher than the classical (0.026) and RNN (0.005) models, warranting human review despite the low final score."
+    },
+    "_meta": {
+      "cnn_mode": "simulated"
+    }
+  },
+  {
+    "customer_id": "C002",
+    "model_outputs": {
+      "classical_score": 0.87,
+      "cnn_score": 0.6,
+      "rnn_score": 0.561,
+      "final_score": 0.696,
+      "risk_level": "medium"
+    },
+    "llm_explanation": {
+      "summary": "Customer reported a clothing item (top) runs small and has poor quality with stitching coming loose after a single wash, expressing disappointment given the price.",
+      "recommended_action": "Escalate for human review to investigate the product quality issue and reconcile model score discrepancies.",
+      "reason": "The customer's complaint highlights significant product quality defects (sizing and stitching) occurring after a single wash. Although the final score is 0.696 and the overall risk level is medium, there is a strong disagreement among the individual model scores (e.g., classical_score at 0.87 versus rnn_score at 0.561), indicating uncertainty that warrants human intervention to ensure appropriate resolution.",
+      "human_review_required": true,
+      "risk_notes": "The overall risk level is classified as medium. However, the significant variance between the classical model's high score (0.87) and the CNN/RNN models' lower scores (0.6, 0.561) suggests a potential for misclassification or an edge case requiring a deeper look. This disagreement prevents a confident automated decision, especially given the explicit quality defect mentioned by the customer."
+    },
+    "_meta": {
+      "cnn_mode": "simulated"
+    }
+  },
+  {
+    "customer_id": "C003",
+    "model_outputs": {
+      "classical_score": 0.796,
+      "cnn_score": 0.405,
+      "rnn_score": 0.189,
+      "final_score": 0.497,
+      "risk_level": "medium"
+    },
+    "llm_explanation": {
+      "summary": "Customer received a defective dress (torn seam, chemical smell) and has not received a response to two support emails sent over two weeks, leading to a severely negative experience.",
+      "recommended_action": "Prioritize and escalate this complaint. Contact the customer immediately to apologize, investigate the reported issues (defective product, lack of support response), and offer a full resolution such as a refund or replacement.",
+      "reason": "The complaint describes a significant product defect and a complete failure in customer support response over a two-week period. Although the final model score is moderate (0.497), the severity of the customer's experience and the lack of communication warrants immediate attention.",
+      "human_review_required": true,
+      "risk_notes": "The model's individual scores show strong disagreement: Classical (0.796) indicates high severity, while CNN (0.405) and RNN (0.189) suggest lower severity. This significant divergence, despite the final risk_level being 'medium', necessitates human review to ensure an accurate assessment and appropriate action."
+    },
+    "_meta": {
+      "cnn_mode": "real"
+    }
+  },
+  {
+    "customer_id": "C004",
+    "model_outputs": {
+      "classical_score": 0.121,
+      "cnn_score": 0.4,
+      "rnn_score": 0.062,
+      "final_score": 0.187,
+      "risk_level": "low"
+    },
+    "llm_explanation": {
+      "summary": "The customer provided a mixed review for the jeans, noting good comfort and fit but a lighter wash than expected compared to the online picture. The final aggregated sentiment score remains low.",
+      "recommended_action": "A human review is recommended to investigate the significant discrepancy between individual model scores, despite the low overall risk classification.",
+      "reason": "While the final score (0.187) and risk level ('low') suggest minimal immediate concern, there is a strong disagreement among the individual model outputs. The CNN model scored 0.4, which is considerably higher than the Classical (0.121) and RNN (0.062) models. This divergence necessitates human oversight to validate the sentiment classification and understand the varying interpretations.",
+      "human_review_required": true,
+      "risk_notes": "The overall risk level is assessed as low. However, the notable disagreement in individual model scores, particularly the CNN model's higher score, indicates a need for human validation to ensure accuracy and consistency in interpretation."
+    },
+    "_meta": {
+      "cnn_mode": "simulated"
+    }
+  },
+  {
+    "customer_id": "C005",
+    "model_outputs": {
+      "classical_score": 0.933,
+      "cnn_score": 0.6,
+      "rnn_score": 0.736,
+      "final_score": 0.774,
+      "risk_level": "high"
+    },
+    "llm_explanation": {
+      "summary": "Customer received an incorrect size and a defective product (broken zipper). This is the third consecutive order with issues, leading to significant dissatisfaction and a stated consideration of not shopping again.",
+      "recommended_action": "Prioritize immediate contact with the customer to apologize, offer a comprehensive resolution (e.g., full refund or replacement), and investigate the recurring order fulfillment problems.",
+      "reason": "The customer has experienced multiple product issues (wrong size, broken zipper) across three consecutive orders, indicating a systemic problem and resulting in high dissatisfaction. The final model score of 0.774 combined with a 'high' risk level signals a critical customer retention risk. Addressing this promptly is crucial to prevent customer churn.",
+      "human_review_required": true,
+      "risk_notes": "The risk level is explicitly 'high', which automatically triggers human review. Additionally, there is a strong disagreement among the model scores (classical_score: 0.933, cnn_score: 0.600, rnn_score: 0.736), suggesting that human oversight is necessary to interpret the varying confidence levels and determine the best course of action. The complaint text highlights repeated issues and a direct threat of churn."
+    },
+    "_meta": {
+      "cnn_mode": "simulated"
+    }
+  }
+]

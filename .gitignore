@@ -1,0 +1,11 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+
+# Derived train/validation/test splits: regenerable via data_exploration.ipynb
+train.csv
+val.csv
+test.csv

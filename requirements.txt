@@ -1,0 +1,13 @@
+scikit-learn
+pandas
+numpy
+joblib
+tensorflow
+matplotlib
+seaborn
+jupyter
+fastapi
+uvicorn
+pydantic
+google-genai
+python-dotenv

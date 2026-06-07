@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.git
+.env
+.env.example
+
+# Raw data, notebooks, docs, and sample I/O aren't needed to serve predictions
+*.csv
+*.ipynb
+*.md
+sample_inputs.json
+sample_outputs.json
+train_classical_model.py
+train_rnn_model.py
