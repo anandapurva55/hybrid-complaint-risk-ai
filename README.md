@@ -1,4 +1,4 @@
-# Hybrid Customer-Dissatisfaction Risk Triage on AWS: Classical ML, Fine-Tuned DistilBERT on PyTorch, a Calibrated Decision Layer, Deterministic Review Rules and LLM Explanations from Amazon Bedrock (Nova Lite), Served with FastAPI, Docker, CloudFormation, ECS Fargate, CloudFront, AWS WAF, Secrets Manager and CloudWatch
+# Hybrid Customer-Dissatisfaction Risk Triage on AWS: Classical ML, Fine-Tuned DistilBERT on PyTorch, a Calibrated Decision Layer, Deterministic Review Rules and LLM Explanations from Amazon Bedrock (Nova Lite), Served with FastAPI, Docker, CloudFormation, ECS Fargate, CloudFront, AWS WAF, Secrets Manager, CloudWatch and GitHub Actions CI/CD
 
 Built with: **Python** 3.11; **scikit-learn** with **TF-IDF** and **Logistic Regression**; **PyTorch** and **Hugging Face Transformers** with a fine-tuned **DistilBERT** stored as **int8** weights; a pure **NumPy** decision layer with **temperature calibration**, probability blending, tuned thresholds and review triggers; **Amazon Bedrock** with **Nova Lite** for explanations; **FastAPI** and **Pydantic**; **Docker**; **AWS CloudFormation**, **Amazon ECS** on **AWS Fargate**, an **Application Load Balancer**, **Amazon CloudFront**, **AWS WAF**, **AWS Secrets Manager**, **Amazon CloudWatch** with **EMF** metrics and alarms, and **GitHub Actions** with **OIDC**; **pytest**.
 
@@ -335,7 +335,7 @@ python docs/diagrams/generate.py             # redraw the diagrams in this READM
 | Explanations | **Amazon Bedrock** (**Nova Lite**) | Called through a task role allowed to invoke only that model |
 | Secrets | **AWS Secrets Manager** | Generates the API key at deploy time and injects it into the container |
 | Observability | **CloudWatch** | One **EMF** metric line per prediction (`Predictions`, `ReviewRequired`, `FallbackExplanation`, `AutoReply`, `EscalatedHigh`, `TopProbability`) and four alarms: 5xx errors, unhealthy task, fallback share above 40%, review share above 50%. `GET /stats` compares one task with the test-split baseline in [`monitoring_baseline.json`](results/monitoring_baseline.json) |
-| Infrastructure | **CloudFormation** | One stack, [`deploy/ecs-fargate.yaml`](deploy/ecs-fargate.yaml), linted in CI |
+| Infrastructure | **CloudFormation** | One stack, [`deploy/ecs-fargate.yaml`](deploy/ecs-fargate.yaml), linted by **GitHub Actions** CI |
 
 A single prediction takes about 6 seconds end to end, dominated by the **LLM** call; the two text models take well under a second on CPU. A running stack costs roughly 3 to 6 dollars a day (mostly the load balancer and **Fargate**), so delete it when idle.
 
@@ -447,7 +447,7 @@ Unknown fields are ignored, so older clients that still send `image` or `recomme
 ├── deploy/              CloudFormation stacks
 ├── docs/                diagrams, figures and badges as code, plus the generated images
 ├── tests/               68 tests
-└── .github/workflows/   CI and the deploy pipeline
+└── .github/workflows/   GitHub Actions: CI and the deploy pipeline
 ```
 
 The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`, the models, `llm_explainer`), and `decision` imports nothing heavy. Scripts are run as modules from the repository root (`python -m training.make_splits`), and every file location comes from [`paths.py`](src/hybrid_risk/paths.py), so nothing depends on the working directory.
@@ -474,7 +474,7 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 
 ## Testing
 
-`python -m pytest` runs 68 tests in about ten seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and **CloudWatch** metric format, and end-to-end smoke tests that load the real models. CI also lints the **CloudFormation** templates and rebuilds the data splits from the raw CSV.
+`python -m pytest` runs 68 tests in about ten seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and **CloudWatch** metric format, and end-to-end smoke tests that load the real models. **GitHub Actions** runs these tests on every push and pull request, then lints the **CloudFormation** templates and rebuilds the data splits from the raw CSV; the deploy workflow repeats the tests before it builds anything.
 
 ## Design decisions
 

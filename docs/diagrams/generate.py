@@ -88,7 +88,9 @@ def aws_architecture() -> None:
             bedrock = Bedrock("Bedrock\nNova Lite")
             secret = SecretsManager("Secrets Manager\nAPI key")
             logs = Cloudwatch("CloudWatch\nmetrics + alarms")
+        gha = GithubActions("GitHub Actions\nOIDC deploy")
         client >> Edge(label="HTTPS + X-API-Key") >> waf >> cdn >> alb >> api
+        gha >> Edge(style="dashed", label="CloudFormation") >> api
         api >> Edge(label="one model only") >> bedrock
         secret >> Edge(style="dashed", label="at start") >> api
         api >> Edge(label="every prediction") >> logs
