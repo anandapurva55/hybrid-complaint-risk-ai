@@ -1,0 +1,18 @@
+{
+  "decision": {
+    "w_classical": 0.7,
+    "temp_classical": 0.9,
+    "temp_rnn": 1.45,
+    "t_high": 0.25,
+    "t_medium": 0.225,
+    "conflict_min": 0.3,
+    "max_proba_floor": 0.45,
+    "disagreement_tv": 0.45
+  },
+  "selection": {
+    "split": "val",
+    "target_high_recall": 0.7,
+    "val_macro_f1": 0.6264,
+    "val_recall_high": 0.7331
+  }
+}

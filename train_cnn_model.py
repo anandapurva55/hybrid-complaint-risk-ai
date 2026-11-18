@@ -1,5 +1,13 @@
 """
-CNN component.
+CNN component: OPTIONAL DEMO, NOT PART OF THE DECISION.
+
+hybrid_inference.py no longer uses this model. It classifies 28x28 Fashion-MNIST
+clothing categories, so it cannot judge a real complaint photo, and its
+category->risk table below is an illustrative assumption. Feeding it into the
+score (30% weight, with a constant when no image exists) added noise and hid
+the "high" class, so it was removed from the decision; see README, "Why the CNN
+is not in the decision". The script is kept to document the architecture and
+how a real image model would plug in once outcome-labelled photos exist.
 
 Trains a small CNN image classifier on a subset of Fashion-MNIST and saves it
 to cnn_model.keras, then documents how its output is turned into the

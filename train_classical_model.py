@@ -2,15 +2,19 @@
 Classical ML baseline for complaint escalation risk.
 
 Trains a single scikit-learn pipeline (TF-IDF over review text plus scaled and
-encoded tabular customer-profile features, feeding a Logistic Regression model)
-on train.csv, reports accuracy and macro-F1 on val.csv and test.csv, and saves
-the fitted pipeline to classical_model.pkl for use by hybrid_inference.py.
+encoded tabular features, feeding a Logistic Regression model) on train.csv,
+reports accuracy and macro-F1 on val.csv and test.csv, and saves the fitted
+pipeline to classical_model.pkl for use by hybrid_inference.py.
 
-Run:
+"Recommended IND" is intentionally excluded (it is a near-proxy of the rating
+the label is derived from); see risk_common.py and evaluate_hybrid.py's ablation.
+
+Run (after `python make_splits.py`):
     python train_classical_model.py
 """
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -27,7 +31,7 @@ from risk_common import (
     RANDOM_STATE,
     TARGET,
     TEXT_FEATURE,
-    proba_to_score,
+    reorder_proba,
 )
 
 MODEL_PATH = "classical_model.pkl"
@@ -40,9 +44,10 @@ def load_split(name):
 def build_pipeline():
     """TF-IDF for text, scaling for numeric, one-hot for categorical -> Logistic Regression.
 
-    class_weight="balanced" compensates for the ~78/12/10 class imbalance found
-    during data exploration (otherwise the model could just predict "low" and
-    still look accurate).
+    No class_weight: reweighting distorts the predicted probabilities, and the
+    decision layer (decision.py) works on probabilities. The ~78/12/10 class
+    imbalance is handled afterwards by tuning decision thresholds on the
+    validation set instead of by skewing the model.
     """
     preprocessor = ColumnTransformer(
         transformers=[
@@ -53,7 +58,7 @@ def build_pipeline():
     )
     return Pipeline([
         ("preprocessor", preprocessor),
-        ("clf", LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_STATE)),
+        ("clf", LogisticRegression(max_iter=2000, random_state=RANDOM_STATE)),
     ])
 
 
@@ -83,13 +88,12 @@ def main():
     evaluate(pipeline, val_df, "Validation")
     evaluate(pipeline, test_df, "Test")
 
-    # Sanity-check the ordinal score conversion that hybrid_inference.py relies on.
+    # Sanity-check the probability ordering that hybrid_inference.py relies on.
     sample = test_df.iloc[:5]
-    proba = pipeline.predict_proba(sample[FEATURE_COLUMNS])
-    scores = proba_to_score(proba, pipeline.classes_)
-    print("\nSample classical_score values (ordinal expected value, 0=low .. 1=high):")
-    for (_, row), score in zip(sample.iterrows(), scores):
-        print(f"  true={row[TARGET]:6s} predicted_label={pipeline.predict(row[FEATURE_COLUMNS].to_frame().T)[0]:6s} classical_score={score:.3f}")
+    proba = reorder_proba(pipeline.predict_proba(sample[FEATURE_COLUMNS]), pipeline.classes_)
+    print("\nSample probabilities (columns: low, medium, high):")
+    for (_, row), p in zip(sample.iterrows(), proba):
+        print(f"  true={row[TARGET]:6s} p={np.round(p, 3)}")
 
     joblib.dump(pipeline, MODEL_PATH)
     print(f"\nSaved pipeline to {MODEL_PATH}")

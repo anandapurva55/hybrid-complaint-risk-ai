@@ -1,60 +1,53 @@
 """
-Hybrid scoring logic and end-to-end inference.
+Hybrid scoring and end-to-end inference.
 
-Combines the three trained components (classical ML, CNN, RNN) into a single
-weighted risk score, maps it to a risk_level, and, through predict_hybrid,
-hands the result to the LLM explanation layer (llm_explainer.py) for a
-structured business explanation.
+Components that make the decision (all deterministic once trained):
+  * classical ML  - TF-IDF + tabular features -> Logistic Regression
+  * RNN / LSTM    - review text only
+Their calibrated class probabilities are blended and mapped to a risk level by
+decision.py using parameters tuned on the validation split (decision_config.json).
+The LLM (llm_explainer.py) only EXPLAINS the result; it cannot change it.
+
+The CNN is NOT part of the decision. It was trained on Fashion-MNIST, so it
+cannot judge a complaint photo, and feeding it a constant when no image exists
+only added noise (see README, "Why the CNN is not in the decision"). Any
+`image` / `image_available` fields in the payload are ignored.
 
 --------------------------------------------------------------------------
-Input schema
+Input schema (mirrors the Women's E-Commerce Clothing Reviews columns)
 --------------------------------------------------------------------------
-A generic complaint payload would typically use generic fields
-(customer_tenure, previous_complaints, ...). This system is built on the
-Women's E-Commerce Clothing Reviews dataset instead (see data_exploration.ipynb
-for why), and its trained classical and RNN models expect that dataset's
-actual columns. So `input_data` here mirrors those fields: still "customer
-profile data plus complaint text plus an image flag", just with the field
-names the trained models actually understand:
-
     {
-        "customer_id": "C001",
-        "review_text": "The product arrived damaged and the zipper is broken.",
+        "customer_id": "C001",            # optional, echoed nowhere sensitive
+        "review_text": "The zipper is broken ...",
         "age": 35,
         "positive_feedback_count": 2,
-        "recommended_ind": 0,
         "division_name": "General",
         "department_name": "Dresses",
-        "class_name": "Dresses",
-        "image_available": True,
-        "image": None,   # optional 28x28 grayscale array; see get_cnn_score
+        "class_name": "Dresses"
     }
+`recommended_ind` is accepted but ignored (label-leakage feature, see risk_common.py).
 
-Run as a script for a quick smoke test against sample_inputs.json:
-    python hybrid_inference.py
+Smoke test:  python hybrid_inference.py
 """
 
 import json
+import os
 
 import joblib
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 
+from decision import action_for, assess, final_score, load_config, review_reasons
 from llm_explainer import explain_with_gemini
-from risk_common import CLASSES, proba_to_score
-from train_cnn_model import cnn_score_from_proba
+from risk_common import CLASSES, FEATURE_COLUMNS, proba_to_score, reorder_proba
 
-CLASSICAL_MODEL_PATH = "classical_model.pkl"
-CNN_MODEL_PATH = "cnn_model.keras"
-RNN_MODEL_PATH = "rnn_model.keras"
+_HERE = os.path.dirname(os.path.abspath(__file__))
+CLASSICAL_MODEL_PATH = os.path.join(_HERE, "classical_model.pkl")
+RNN_MODEL_PATH = os.path.join(_HERE, "rnn_model.keras")
 
-# Hybrid weighting used to combine the three component scores
-WEIGHTS = {"classical": 0.4, "cnn": 0.3, "rnn": 0.3}
+MIN_WORDS = 4  # shorter texts give the text models too little to go on -> force review
 
-# Lazily-loaded, module-level singletons; each model is loaded once and reused.
 _classical_model = None
-_cnn_model = None
 _rnn_model = None
 
 
@@ -65,133 +58,84 @@ def _load_classical():
     return _classical_model
 
 
-def _load_cnn():
-    global _cnn_model
-    if _cnn_model is None:
-        _cnn_model = tf.keras.models.load_model(CNN_MODEL_PATH)
-    return _cnn_model
-
-
 def _load_rnn():
     global _rnn_model
     if _rnn_model is None:
+        import tensorflow as tf  # imported lazily so pure-logic tests need no TF
         _rnn_model = tf.keras.models.load_model(RNN_MODEL_PATH)
     return _rnn_model
 
 
-def _classical_input_row(input_data):
+def classical_proba(df):
+    """(N, 3) probabilities in CLASSES order from a DataFrame with FEATURE_COLUMNS."""
+    model = _load_classical()
+    return reorder_proba(model.predict_proba(df[FEATURE_COLUMNS]), model.classes_)
+
+
+def rnn_proba(texts):
+    """(N, 3) probabilities in CLASSES order from a sequence of review texts.
+
+    Passed as a tf.string tensor: Keras 3 rejects numpy unicode arrays for
+    batch size 1 ("Invalid dtype: str<N>")."""
+    import tensorflow as tf
+    model = _load_rnn()
+    batch = tf.constant([str(t) for t in texts], dtype=tf.string)
+    return np.asarray(model.predict(batch, verbose=0))
+
+
+def _input_frame(input_data):
     return pd.DataFrame([{
         "Review Text": input_data["review_text"],
         "Age": input_data["age"],
         "Positive Feedback Count": input_data["positive_feedback_count"],
-        "Recommended IND": input_data["recommended_ind"],
         "Division Name": input_data["division_name"],
         "Department Name": input_data["department_name"],
         "Class Name": input_data["class_name"],
     }])
 
 
-def get_classical_score(input_data):
-    """Classical ML risk score in [0, 1] (TF-IDF + tabular Logistic Regression)."""
-    model = _load_classical()
-    proba = model.predict_proba(_classical_input_row(input_data))
-    return float(proba_to_score(proba, model.classes_)[0])
+def predict_hybrid(input_data, explain=True):
+    """Run the two text models, decide deterministically, then (optionally) explain."""
+    cfg = load_config()
+    df = _input_frame(input_data)
+    text = str(input_data["review_text"])
 
+    p_cl = classical_proba(df)
+    p_rn = rnn_proba([text])
 
-def get_rnn_score(input_data):
-    """RNN/LSTM risk score in [0, 1], from the review text sequence alone.
-
-    Single-sample batches must be passed as a tf.string tensor rather than a
-    raw numpy unicode array. Keras 3 raises "Invalid dtype: str<N>" for the
-    latter when the batch size is 1 (it works fine for the larger batches used
-    during training and evaluation, where Keras builds an internal tf.data pipeline)."""
-    model = _load_rnn()
-    text = tf.constant([input_data["review_text"]], dtype=tf.string)
-    proba = model.predict(text, verbose=0)
-    return float(proba_to_score(proba, CLASSES)[0])
-
-
-def get_cnn_score(input_data):
-    """CNN risk score in [0, 1].
-
-    Real path: if a 28x28 grayscale image array is supplied, run it through
-    the trained Fashion-MNIST CNN and convert via cnn_score_from_proba
-    (see train_cnn_model.py).
-
-    Simulated path: this dataset and scenario has no complaint images, so the
-    common case has no `image`. We then fall back to a small, clearly-labelled
-    simulated signal driven by the `image_available` flag, as a stand-in for
-    "a photo exists and would need scoring" versus "no visual evidence at all".
-    train_cnn_model.py's docstring documents why this is simulated and how a
-    real system would replace it with a learned score.
-    """
-    image = input_data.get("image")
-    if image is not None:
-        model = _load_cnn()
-        x = np.asarray(image, dtype="float32")
-        if x.max() > 1.0:
-            x = x / 255.0
-        x = x.reshape(1, 28, 28, 1)
-        proba = model.predict(x, verbose=0)
-        return float(cnn_score_from_proba(proba)[0]), "real"
-
-    simulated_score = 0.6 if input_data.get("image_available") else 0.4
-    return float(simulated_score), "simulated"
-
-
-def combine_scores(classical_score, cnn_score, rnn_score):
-    """Weighted combination of the three component scores: 0.4*classical + 0.3*cnn + 0.3*rnn."""
-    return (
-        WEIGHTS["classical"] * classical_score
-        + WEIGHTS["cnn"] * cnn_score
-        + WEIGHTS["rnn"] * rnn_score
-    )
-
-
-def map_risk(score):
-    """Threshold mapping from a final score to a risk level (see decision_policy.md)."""
-    if score >= 0.75:
-        return "high"
-    elif score >= 0.45:
-        return "medium"
-    else:
-        return "low"
-
-
-def predict_hybrid(input_data):
-    """
-    Runs classical ML, CNN, RNN, combines scores,
-    then calls the LLM explanation layer.
-    """
-    classical_score = get_classical_score(input_data)
-    cnn_score, cnn_mode = get_cnn_score(input_data)
-    rnn_score = get_rnn_score(input_data)
-
-    final_score = combine_scores(classical_score, cnn_score, rnn_score)
-    risk_level = map_risk(final_score)
+    short = np.array([len(text.split()) < MIN_WORDS])
+    result = assess(p_cl, p_rn, cfg, extra_flags={"short_text": short})
+    level = str(result["level"][0])
+    review = bool(result["review"][0])
+    reasons = review_reasons(result["flags"])
+    p_final = result["p_final"]
 
     model_outputs = {
-        "classical_score": round(classical_score, 3),
-        "cnn_score": round(cnn_score, 3),
-        "rnn_score": round(rnn_score, 3),
-        "final_score": round(final_score, 3),
-        "risk_level": risk_level,
+        "classical_score": round(float(proba_to_score(result["p_classical"], CLASSES)[0]), 3),
+        "rnn_score": round(float(proba_to_score(result["p_rnn"], CLASSES)[0]), 3),
+        "final_score": round(float(final_score(p_final)[0]), 3),
+        "probabilities": {c: round(float(p), 3) for c, p in zip(CLASSES, p_final[0])},
+        "risk_level": level,
+        "recommended_action": action_for(level, review),
+        "human_review_required": review,
+        "review_reasons": reasons,
     }
 
-    llm_explanation = explain_with_gemini({
-        "complaint_text": input_data.get("review_text", ""),
-        "model_outputs": model_outputs,
-    })
+    if explain:
+        explanation = explain_with_gemini({"complaint_text": text, "model_outputs": model_outputs})
+    else:
+        explanation = None
 
+    source = (explanation or {}).pop("_source", None) if explanation else None
     return {
         "model_outputs": model_outputs,
-        "llm_explanation": llm_explanation,
-        "_meta": {"cnn_mode": cnn_mode},
+        "llm_explanation": explanation,
+        "_meta": {"cnn_used": False, "explanation_source": source},
     }
 
 
 if __name__ == "__main__":
-    with open("sample_inputs.json") as f:
+    with open(os.path.join(_HERE, "sample_inputs.json")) as f:
         samples = json.load(f)
 
     for sample in samples:

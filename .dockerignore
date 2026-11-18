@@ -14,3 +14,15 @@ sample_inputs.json
 sample_outputs.json
 train_classical_model.py
 train_rnn_model.py
+train_cnn_model.py
+cnn_model.keras
+make_splits.py
+tune_decision.py
+evaluate_hybrid.py
+generate_sample_outputs.py
+tests/
+evaluation_results.json
+model_manifest.json
+requirements-dev.txt
+.github
+pytest.ini

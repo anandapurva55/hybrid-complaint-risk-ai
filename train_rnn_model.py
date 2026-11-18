@@ -6,11 +6,12 @@ predict risk_level, using the same train, validation, and test splits
 produced in data_exploration.ipynb as the classical baseline, so every
 component is evaluated on identical rows (no leakage, comparable metrics).
 
-To keep runtime predictable on a laptop CPU, training runs on a stratified
-subset of the training split; the full split is still used for validation
-and test reporting.
+Trains on the FULL training split (earlier versions used a 6,000-row subset),
+with early stopping on validation loss. No class weights: the decision layer
+works on probabilities, and class imbalance is handled by threshold tuning
+(see decision.py / tune_decision.py).
 
-Run:
+Run (after `python make_splits.py`):
     python train_rnn_model.py
 """
 
@@ -19,19 +20,18 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
-from sklearn.utils.class_weight import compute_class_weight
 from tensorflow.keras import layers, models
 
-from risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE, proba_to_score
+from risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE
 
 MODEL_PATH = "rnn_model.keras"
 
 MAX_TOKENS = 10000
 SEQUENCE_LENGTH = 100
 EMBEDDING_DIM = 64
-EPOCHS = 6
+EPOCHS = 12  # upper bound; early stopping picks the best epoch
 BATCH_SIZE = 64
-TRAIN_SUBSET = 6000  # stratified subset of the 15,848-row train split (compute budget)
+TRAIN_SUBSET = None  # None = use the full train split
 
 # low=0, medium=1, high=2, matching risk_common.ORDINAL_WEIGHTS / CLASSES order,
 # so the softmax output columns line up directly with proba_to_score's expectation.
@@ -46,7 +46,7 @@ def load_split(name):
 
 
 def stratified_subsample(texts, labels, size, seed):
-    if size >= len(texts):
+    if size is None or size >= len(texts):
         return texts, labels
     idx_subset, _ = train_test_split(
         np.arange(len(texts)), train_size=size, stratify=labels, random_state=seed
@@ -97,30 +97,20 @@ def main():
     model = build_model(vectorizer)
     model.summary()
 
-    # Same imbalance the classical baseline saw (~78/12/10 low/medium/high)
-    class_weight = dict(enumerate(
-        compute_class_weight("balanced", classes=np.arange(len(CLASSES)), y=train_labels)
-    ))
-    print("Class weights:", {CLASSES[i]: round(w, 2) for i, w in class_weight.items()})
-
+    early_stop = tf.keras.callbacks.EarlyStopping(
+        monitor="val_loss", patience=2, restore_best_weights=True
+    )
     model.fit(
         train_texts, train_labels,
         validation_data=(val_texts, val_labels),
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
-        class_weight=class_weight,
+        callbacks=[early_stop],
         verbose=2,
     )
 
     evaluate(model, val_texts, val_labels, "Validation")
-    test_proba = evaluate(model, test_texts, test_labels, "Test")
-
-    print("\nSample rnn_score values (ordinal expected value, 0=low .. 1=high):")
-    scores = proba_to_score(test_proba[:5], CLASSES)
-    for i, score in enumerate(scores):
-        true_cls = CLASSES[test_labels[i]]
-        pred_cls = CLASSES[test_proba[i].argmax()]
-        print(f"  true={true_cls:6s} predicted={pred_cls:6s} rnn_score={score:.3f}")
+    evaluate(model, test_texts, test_labels, "Test")
 
     model.save(MODEL_PATH)
     print(f"\nSaved model to {MODEL_PATH}")

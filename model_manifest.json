@@ -1,0 +1,15 @@
+{
+  "python": "3.11",
+  "trained_with": {
+    "scikit-learn": "1.9.1", "tensorflow": "2.21.0", "keras": "3.15.1",
+    "numpy": "2.4.6", "pandas": "3.1.1"
+  },
+  "artifacts": {
+    "classical_model.pkl": "TF-IDF + tabular -> LogisticRegression (no class weights, no Recommended IND)",
+    "rnn_model.keras": "TextVectorization + Embedding + LSTM, full train split, early stopping",
+    "decision_config.json": "temperatures, blend weight, thresholds, review triggers (tuned on validation only)",
+    "cnn_model.keras": "Fashion-MNIST demo CNN, NOT used in the decision (see README)"
+  },
+  "rebuild": ["python make_splits.py", "python train_classical_model.py", "python train_rnn_model.py",
+              "python tune_decision.py", "python evaluate_hybrid.py"]
+}

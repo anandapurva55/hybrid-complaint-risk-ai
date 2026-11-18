@@ -1,60 +1,65 @@
 """
 FastAPI wrapper around the hybrid pipeline.
 
-Exposes a single POST /predict endpoint that accepts the same `input_data`
-shape documented in hybrid_inference.py (the trained-model schema, matching
-the Women's E-Commerce Clothing Reviews dataset's actual columns; see that
-module's docstring for why) and returns predict_hybrid()'s full result:
-model_outputs, llm_explanation, and _meta.
+POST /predict accepts the `input_data` shape documented in hybrid_inference.py
+and returns model_outputs (deterministic decision), llm_explanation and _meta.
+
+Optional auth: if the API_KEY environment variable is set, every request to
+/predict must send the same value in an `X-API-Key` header. (Rate limiting is
+left to the platform in front of the service, e.g. API Gateway / WAF.)
 
 Run:
     uvicorn app:app --reload
-
-Then, e.g.:
-    curl -X POST http://127.0.0.1:8000/predict \
-         -H "Content-Type: application/json" \
-         -d @sample_inputs.json   # (send one object, not the whole list)
 """
 
-from typing import List, Optional
+import hmac
+import logging
+import os
+from typing import Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 
-from hybrid_inference import predict_hybrid
+import hybrid_inference
+
+logger = logging.getLogger("hybrid-risk-api")
 
 app = FastAPI(
-    title="Hybrid Complaint Escalation Risk API",
-    description="Classical ML + CNN + RNN + LLM hybrid risk scoring for e-commerce complaints.",
-    version="1.0.0",
+    title="Hybrid Dissatisfaction-Risk Triage API",
+    description="Classical ML + RNN decision with an LLM explanation. Risk is a proxy "
+                "derived from star ratings, not an observed escalation outcome.",
+    version="2.0.0",
 )
 
 
-class ComplaintInput(BaseModel):
-    """Mirrors `input_data` in hybrid_inference.py: field names match the
-    trained models' actual columns from the Women's E-Commerce Clothing
-    Reviews dataset."""
+def require_api_key(x_api_key: Optional[str] = Header(default=None)):
+    expected = os.environ.get("API_KEY")
+    if expected and not hmac.compare_digest(x_api_key or "", expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
 
-    customer_id: Optional[str] = None
-    review_text: str = Field(..., description="The complaint / review text.")
-    age: int
-    positive_feedback_count: int
-    recommended_ind: int = Field(..., ge=0, le=1)
-    division_name: str
-    department_name: str
-    class_name: str
-    image_available: bool = False
-    image: Optional[List[List[float]]] = Field(
-        None, description="Optional 28x28 grayscale array (real CNN scoring path)."
-    )
+
+class ComplaintInput(BaseModel):
+    """Trained-model schema (Women's E-Commerce Clothing Reviews columns).
+    Unknown fields (e.g. legacy `image`, `recommended_ind`) are ignored."""
+
+    customer_id: Optional[str] = Field(None, max_length=64)
+    review_text: str = Field(..., min_length=1, max_length=5000, description="Complaint / review text.")
+    age: int = Field(..., ge=10, le=120)
+    positive_feedback_count: int = Field(..., ge=0)
+    division_name: str = Field(..., max_length=100)
+    department_name: str = Field(..., max_length=100)
+    class_name: str = Field(..., max_length=100)
 
 
 class ModelOutputs(BaseModel):
     classical_score: float
-    cnn_score: float
     rnn_score: float
     final_score: float
+    probabilities: Dict[str, float]
     risk_level: str
+    recommended_action: str
+    human_review_required: bool
+    review_reasons: List[str]
 
 
 class LlmExplanation(BaseModel):
@@ -62,20 +67,20 @@ class LlmExplanation(BaseModel):
     recommended_action: str
     reason: str
     human_review_required: bool
-    risk_notes: object
+    risk_notes: List[str]
 
 
 class Meta(BaseModel):
-    cnn_mode: str
+    cnn_used: bool
+    explanation_source: Optional[str] = None
 
 
 class PredictionResponse(BaseModel):
-    model_outputs: ModelOutputs
-    llm_explanation: LlmExplanation
-    meta: Meta = Field(..., alias="_meta")
+    model_config = ConfigDict(populate_by_name=True)
 
-    class Config:
-        populate_by_name = True
+    model_outputs: ModelOutputs
+    llm_explanation: Optional[LlmExplanation] = None
+    meta: Meta = Field(..., alias="_meta")
 
 
 @app.get("/")
@@ -83,14 +88,15 @@ def health():
     return {"status": "ok", "service": "hybrid-complaint-risk-api"}
 
 
-@app.post("/predict", response_model=PredictionResponse, response_model_by_alias=True)
+@app.post("/predict", response_model=PredictionResponse, response_model_by_alias=True,
+          dependencies=[Depends(require_api_key)])
 def predict(payload: ComplaintInput):
-    """Runs the full hybrid pipeline (classical ML -> CNN -> RNN -> combine -> LLM)
-    on a single complaint and returns the same structure predict_hybrid() does."""
+    """Runs the full hybrid pipeline on one complaint."""
     try:
-        result = predict_hybrid(payload.model_dump())
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=f"Model artifact missing: {exc}") from None
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {exc}") from None
-    return result
+        return hybrid_inference.predict_hybrid(payload.model_dump())
+    except FileNotFoundError:
+        logger.exception("Model artifact missing")
+        raise HTTPException(status_code=503, detail="Model artifacts unavailable.") from None
+    except Exception:
+        logger.exception("Prediction failed")
+        raise HTTPException(status_code=500, detail="Prediction failed.") from None

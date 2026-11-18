@@ -19,12 +19,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only what inference needs: the trained artifacts, plus the modules
-# hybrid_inference.py imports from (risk_common, train_cnn_model for
-# cnn_score_from_proba, and llm_explainer). Raw CSVs, notebooks, and the
-# virtual environment are intentionally left out (see .dockerignore).
-COPY risk_common.py train_cnn_model.py llm_explainer.py hybrid_inference.py app.py ./
-COPY classical_model.pkl cnn_model.keras rnn_model.keras ./
+# Copy only what inference needs: the modules hybrid_inference.py imports
+# (risk_common, decision, llm_explainer) and the trained artifacts + tuned
+# decision config. The CNN demo model, raw CSVs and notebooks are left out.
+COPY risk_common.py decision.py llm_explainer.py hybrid_inference.py app.py ./
+COPY classical_model.pkl rnn_model.keras decision_config.json ./
+
+# Optional: set API_KEY at run time to require an X-API-Key header on /predict.
+RUN useradd --create-home appuser
+USER appuser
 
 EXPOSE 8000
 
