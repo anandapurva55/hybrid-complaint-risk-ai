@@ -1,6 +1,6 @@
-# Hybrid Customer-Dissatisfaction Risk Triage on AWS: Classical ML, Fine-Tuned DistilBERT, a Calibrated Decision Layer, Deterministic Review Rules and LLM Explanations, Served with FastAPI, Docker, CloudFormation and ECS Fargate
+# Hybrid Customer-Dissatisfaction Risk Triage on AWS: Classical ML, Fine-Tuned DistilBERT, a Calibrated Decision Layer, Deterministic Review Rules and Amazon Bedrock Explanations, Served with FastAPI, Docker, CloudFormation, ECS Fargate, CloudFront, AWS WAF, Secrets Manager and CloudWatch
 
-Built with: **Python** 3.11; **scikit-learn** (TF-IDF and Logistic Regression); **PyTorch** and **Hugging Face Transformers** (a fine-tuned **DistilBERT**, stored as int8 weights); a pure-**NumPy** decision layer (temperature calibration, probability blending, tuned thresholds, review triggers); **Amazon Bedrock** (Nova Lite) for explanations; **FastAPI** and **Pydantic**; **Docker**; **AWS CloudFormation**, **ECS on Fargate**, an **Application Load Balancer**, **CloudFront**, **AWS WAF**, **Secrets Manager**, **CloudWatch** (EMF metrics and alarms) and **GitHub Actions** with **OIDC**; **pytest**.
+Built with: **Python** 3.11; **scikit-learn** with **TF-IDF** and **Logistic Regression**; **PyTorch** and **Hugging Face Transformers** with a fine-tuned **DistilBERT** stored as **int8** weights; a pure **NumPy** decision layer with **temperature calibration**, probability blending, tuned thresholds and review triggers; **Amazon Bedrock** with **Nova Lite** for explanations; **FastAPI** and **Pydantic**; **Docker**; **AWS CloudFormation**, **Amazon ECS** on **AWS Fargate**, an **Application Load Balancer**, **Amazon CloudFront**, **AWS WAF**, **AWS Secrets Manager**, **Amazon CloudWatch** with **EMF** metrics and alarms, and **GitHub Actions** with **OIDC**; **pytest**.
 
 [![CI](https://github.com/anandapurva55/hybrid-complaint-risk-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/anandapurva55/hybrid-complaint-risk-ai/actions/workflows/ci.yml)
 ![Python](docs/images/badges/python.svg)
@@ -10,6 +10,7 @@ Built with: **Python** 3.11; **scikit-learn** (TF-IDF and Logistic Regression); 
 ![Docker](docs/images/badges/docker.svg)
 ![AWS](docs/images/badges/aws.svg)
 ![Bedrock](docs/images/badges/bedrock.svg)
+![Ollama](docs/images/badges/ollama.svg)
 ![CloudFront and WAF](docs/images/badges/cloudfront.svg)
 ![CloudFormation](docs/images/badges/cloudformation.svg)
 ![GitHub Actions](docs/images/badges/github-actions.svg)
@@ -19,7 +20,7 @@ Built with: **Python** 3.11; **scikit-learn** (TF-IDF and Logistic Regression); 
 
 A system that reads a piece of customer feedback and answers three practical questions: **how unhappy is this customer** (low, medium or high), **what should happen next** (reply automatically, send to a person, or escalate), and **why**. Two text models estimate the tier, a small deterministic layer turns their probabilities into a decision, and a language model writes a plain-English explanation. The language model can describe the decision, never change it.
 
-| **0.71** | **0.67** | **98.6%** | **70.7%** | **29%** | **68** |
+| **0.71** | **0.67** | **98.6%** | **70.7%** | **29%** | **67** |
 |:---:|:---:|:---:|:---:|:---:|:---:|
 | Recall on the "high" tier | Macro-F1 (95% CI 0.65 to 0.69) | Truly-high cases that reach a person (350 of 355) | Feedback answered automatically (97.5% of them truly low) | Feedback sent to human review | Automated tests |
 
@@ -61,9 +62,10 @@ So every number in this README measures how well the system recognises **dissati
 ```bash
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
+ollama pull llama3.2              # optional: local explanations (or set LLM_PROVIDER=bedrock)
 
-python hybrid_inference.py        # run the 8 bundled examples (explanations need AWS credentials with Bedrock access)
-python -m pytest                  # 68 tests
+python hybrid_inference.py        # run the 8 bundled examples end to end
+python -m pytest                  # 67 tests
 uvicorn app:app --reload          # HTTP API on http://127.0.0.1:8000
 ```
 
@@ -74,13 +76,13 @@ curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" \
        "department_name":"Jackets","class_name":"Outerwear"}'
 ```
 
-No AWS credentials or Bedrock access? Everything still works: the explanation comes from a local fallback and is labelled `"explanation_source": "fallback"`. Set `LLM_PROVIDER=none` to skip the call entirely.
+No LLM running? Everything still works: the explanation comes from a local fallback and is labelled `"explanation_source": "fallback"`.
 
 ## How it works
 
 ![Decision pipeline](docs/images/decision_pipeline.png)
 
-**In plain words.** Each piece of feedback goes through two models that each output three probabilities (low, medium, high). The first is a classical model (TF-IDF word features plus age and product category, fed to Logistic Regression). The second is DistilBERT, fine-tuned on the reviews, which understands phrasing and context much better and does most of the work. Their probabilities are calibrated so that "80%" really means about 80%, blended (10% classical, 90% transformer, the weight that gave the lowest validation log-loss), and turned into a tier with two thresholds tuned on validation data to catch at least 70% of the truly unhappy customers. A few simple rules then decide whether a person must look. Only after all of that does a language model write the explanation.
+Each piece of feedback goes through two models that each output three probabilities (low, medium, high). The first is a classical model (TF-IDF word features plus age and product category, fed to Logistic Regression). The second is DistilBERT, fine-tuned on the reviews, which understands phrasing and context much better and does most of the work. Their probabilities are calibrated so that "80%" really means about 80%, blended (10% classical, 90% transformer, the weight that gave the lowest validation log-loss), and turned into a tier with two thresholds tuned on validation data to catch at least 70% of the truly unhappy customers. A few simple rules then decide whether a person must look. Only after all of that does a language model write the explanation.
 
 **What happens on one request.**
 
@@ -93,7 +95,7 @@ sequenceDiagram
     participant A as FastAPI service
     participant M as Models (classical, DistilBERT)
     participant D as Decision layer
-    participant L as LLM (Amazon Bedrock, Nova Lite)
+    participant L as LLM (Ollama or Bedrock)
 
     C->>E: POST /predict with X-API-Key (HTTPS)
     E->>A: forward (rate limit per IP applied)
@@ -178,7 +180,7 @@ For the transformer, every response includes the calibrated probabilities, the r
 | Low-confidence or odd input | Very short text, conflicting evidence, low confidence or disagreeing models are never auto-replied |
 | Abuse of the endpoint | HTTPS only, an API key (`X-API-Key`, constant-time comparison), a WAF rate limit per IP, the load balancer reachable only from CloudFront, input validation with length and range limits, and error messages that never expose internals |
 | Secrets | The API key is generated by Secrets Manager at deploy time; the task role can invoke exactly one Bedrock model; no keys are stored in the repository or in GitHub (deploys use OIDC) |
-| Privacy | Metrics and logs contain no complaint text or customer identifiers. Complaint text is sent only to Bedrock for the explanation (set `LLM_PROVIDER=none` to keep everything in-process) |
+| Privacy | Metrics and logs contain no complaint text or customer identifiers; with Ollama nothing leaves the machine |
 
 ## Training pipeline
 
@@ -194,7 +196,7 @@ python compact_transformer.py      # fp32 (268 MB) to int8 (60 MB), no measurabl
 python tune_decision.py            # calibration, blend weight and thresholds from validation
 python evaluate_hybrid.py          # test metrics, triage numbers, monitoring baseline
 python evaluate_robustness.py      # bootstrap intervals, cross-validation, subgroups
-python evaluate_llm.py --n 45      # live check of the explanation layer (needs Bedrock access)
+python evaluate_llm.py --n 45      # live check of the explanation layer
 python docs/diagrams/generate.py   # redraw the diagrams in this README
 ```
 
@@ -206,7 +208,7 @@ python docs/diagrams/generate.py   # redraw the diagrams in this README
 |---|---|---|
 | Edge | CloudFront, AWS WAF | HTTPS with the default certificate, HTTP redirected, a rate limit of 300 requests per 5 minutes per IP |
 | Serving | Application Load Balancer, ECS on Fargate | The load balancer only accepts CloudFront's address range. One to three tasks (2 vCPU, 4 GB) scale on CPU. The container is about 550 MB (CPU-only PyTorch, no TensorFlow) |
-| Explanations | Amazon Bedrock (Nova Lite) | Called through the task role, which is allowed to invoke only that model |
+| Explanations | Amazon Bedrock (Nova Lite) | Called through the task role, which is allowed to invoke only that model. Ollama is used locally |
 | Secrets | AWS Secrets Manager | Generates the API key at deploy time and injects it into the container |
 | Observability | CloudWatch | One metric line per prediction (review share, fallback share, auto-reply share, escalation share, confidence) and four alarms: 5xx errors, unhealthy task, fallback share above 40%, review share above 50% |
 | Infrastructure | CloudFormation | One stack, [`deploy/ecs-fargate.yaml`](deploy/ecs-fargate.yaml), linted in CI |
@@ -249,7 +251,8 @@ Deploys run from GitHub Actions with short-lived OIDC credentials: the role can 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `bedrock` | `bedrock`, or `none` (always use the local fallback) |
+| `LLM_PROVIDER` | `ollama` | `ollama`, `bedrock`, or `none` (always use the fallback) |
+| `OLLAMA_HOST`, `OLLAMA_MODEL` | `http://localhost:11434`, `llama3.2` | Local LLM |
 | `BEDROCK_MODEL_ID` | `us.amazon.nova-lite-v1:0` | Bedrock model; credentials come from the environment or IAM role |
 | `LLM_TIMEOUT_S` | `60` | Per-call timeout before the fallback is used |
 | `API_KEY` | unset | If set, `/predict` and `/stats` require a matching `X-API-Key` |
@@ -260,13 +263,13 @@ Deploys run from GitHub Actions with short-lived OIDC credentials: the role can 
 - **`decision.py`** and **`decision_config.json`**: the pure NumPy decision layer (calibration, blending, thresholds, review triggers, action) and its tuned parameters. No TensorFlow, PyTorch or scikit-learn imports, so it is cheap to test.
 - **`hybrid_inference.py`**: loads the models once, runs one request end to end and assembles the response.
 - **`compact_transformer.py`** and **`transformer_assets/`**: int8 weight storage and loader for DistilBERT, plus its tokenizer and config. The 268 MB fp32 weights stay out of git.
-- **`llm_explainer.py`**: the Bedrock call, prompt building with sanitising, output validators, one retry, the local fallback and the policy re-imposition.
+- **`llm_explainer.py`**: Ollama and Bedrock calls, prompt building with sanitising, output validators, one retry, the local fallback and the policy re-imposition.
 - **`app.py`**: the FastAPI service: validation, API-key check, `/predict`, `/stats`, safe error handling.
 - **`monitoring.py`** and **`monitoring_baseline.json`**: rolling in-process drift monitor and the CloudWatch metric lines.
 - **`make_splits.py`**, **`train_classical_model.py`**, **`train_transformer_model.py`**, **`tune_decision.py`**: the reproducible training and tuning path.
 - **`evaluate_hybrid.py`**, **`evaluate_robustness.py`**, **`evaluate_llm.py`**, **`generate_sample_outputs.py`**: evaluation and the worked examples ([`sample_inputs.json`](sample_inputs.json), [`sample_outputs.json`](sample_outputs.json)).
 - **`baselines.py`**, **`train_rnn_model.py`**, **`train_cnn_model.py`**: the LSTM baseline and a Fashion-MNIST CNN demo, kept for comparison but not part of the decision.
-- **`tests/`**: 68 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
+- **`tests/`**: 67 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
 - **`deploy/`**, **`.github/workflows/`**: the CloudFormation stacks (`ecs-fargate.yaml`, `github-oidc.yaml`), CI and the deploy workflow.
 - **`docs/`**: diagrams as code (`docs/diagrams/`), generated images, [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **`evaluation_report.md`**, **`decision_policy.md`**, **`mini_model_card.md`**: the full report, the decision policy and the model card.
@@ -275,7 +278,7 @@ The diagrams and figures are generated by code ([`generate.py`](docs/diagrams/ge
 
 ## Testing
 
-`python -m pytest` runs 68 tests in about ten seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and CloudWatch metric format, and end-to-end smoke tests that load the real models. CI also lints the CloudFormation templates and rebuilds the data splits from the raw CSV.
+`python -m pytest` runs 67 tests in about ten seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and CloudWatch metric format, and end-to-end smoke tests that load the real models. CI also lints the CloudFormation templates and rebuilds the data splits from the raw CSV.
 
 ## Design decisions
 
@@ -296,6 +299,6 @@ The diagrams and figures are generated by code ([`generate.py`](docs/diagrams/ge
 - **Image evidence.** With outcome-labelled complaint photos, a fine-tuned image model can be blended in only when a photo is attached. Until then the system is text and profile only.
 - **Medium tier** is the hardest (F1 0.44), as mixed reviews are ambiguous by nature.
 - **Precision on "high"** is 0.58 by design; tune `t_high` in `decision_config.json` to trade recall for fewer false alarms.
-- **Explanation quality.** On a live check of 45 cases Nova Lite passed every automatic check with no rejections, but faithfulness beyond numbers and risk tier has not been human-graded, and 45 cases is small.
+- **Explanation quality.** llama3.2 (3B) is rejected about 7% of the time after a retry (then the fallback is used); faithfulness beyond numbers and risk tier has not been human-graded. A larger model or Bedrock improves this.
 - **Evaluation scope.** English clothing reviews, one data split (seed variance is measured), no test on real support tickets yet.
 - **Operations.** HTTPS uses CloudFront's default certificate (a custom domain needs your own ACM certificate). Monitoring has fleet-wide metrics and alarms but no automatic retraining loop.
