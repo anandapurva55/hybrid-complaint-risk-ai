@@ -1,61 +1,65 @@
 # Decision Policy
 
-This document defines how the hybrid system's numeric output (`final_score`, `risk_level`) is turned into a business action, when a human must review a case, and what the LLM explanation layer is, and is not, allowed to do. It documents the rules already encoded in [`hybrid_inference.py`](hybrid_inference.py) (`combine_scores`, `map_risk`) and [`llm_explainer.py`](llm_explainer.py) (`DISAGREEMENT_THRESHOLD`, `_enforce_policy`), so that the code and this document stay in sync. If they ever diverge, the code's deterministic checks are the source of truth; this document is the human-readable explanation of those checks, not a separate authority.
+How model output becomes a business action, when a human must review, and what the LLM may and may not do. The code is the source of truth ([`decision.py`](decision.py), [`decision_config.json`](decision_config.json), [`llm_explainer.py`](llm_explainer.py)); this document explains it.
 
-## 1. How the final score is produced
+**Scope note.** `risk_level` is a *dissatisfaction tier derived from star ratings*, used as a proxy for escalation risk. It has not been validated against real escalation outcomes.
 
-```
-final_score = 0.4 * classical_score + 0.3 * cnn_score + 0.3 * rnn_score
-```
+## 1. Producing the risk level
 
-Each component score is a value between 0 and 1 representing "expected escalation risk," derived from that model's class probabilities through the ordinal convention `0.0 * P(low) + 0.5 * P(medium) + 1.0 * P(high)` (see `risk_common.proba_to_score`, and for the CNN, `train_cnn_model.cnn_score_from_proba`). The weights are fixed by design: the classical model gets the largest share because it is the best-performing and most fully-grounded of the three components (see [`evaluation_report.md`](evaluation_report.md), Q1, for the evidence behind that ranking).
+1. Each text model (classical, RNN) outputs class probabilities `[P(low), P(medium), P(high)]`.
+2. Each is temperature-calibrated (one scalar per model, fit on validation).
+3. They are blended: `p = w * p_classical + (1 - w) * p_rnn` (`w` = 0.7, chosen to minimise validation log-loss).
+4. Decision on the **probabilities** (not a collapsed scalar):
+   - `high` if `P(high) >= t_high`
+   - else `medium` if `P(high) + P(medium) >= t_medium`
+   - else `low`
 
-## 2. From risk thresholds to a default action
+   `t_high` and `t_medium` are selected on validation: among thresholds with validation recall on `high` >= 0.70, the pair with the best macro-F1. Current values are in `decision_config.json`.
 
-| `final_score` range | `risk_level` | Default business action |
-|---|---|---|
-| `score >= 0.75` | **high** | `escalate_immediately`: route to a senior support agent or escalation queue without delay |
-| `0.45 <= score < 0.75` | **medium** | `manual_review`: route to a human reviewer before any reply is sent |
-| `score < 0.45` | **low** | `auto_reply`: the system may send a templated acknowledgement or standard response automatically |
+Why probabilities rather than an expected-value score: `0*P(low) + 0.5*P(medium) + 1*P(high)` gives a 50/50 low-vs-high split the same value as a confident medium. Medium here means a mixed/neutral review, not a midpoint, so contradictory evidence must be detectable (see triggers). The scalar `final_score` is still returned for display only.
 
-This is implemented in `hybrid_inference.map_risk`; the `ACTION_BY_RISK` mapping in [`llm_explainer.py`](llm_explainer.py) mirrors this table for the LLM's fallback path.
+The CNN is **not** part of the decision (README, "Why the CNN is not in the decision").
 
-## 3. When a human must review a case
+## 2. Default action
 
-A case is forced into human review, meaning `human_review_required` is set to `true`, whenever any of the following is true. These checks are deterministic and are re-applied in code (`llm_explainer._enforce_policy`) regardless of what the LLM itself outputs:
+| Risk level | Action |
+|---|---|
+| high | `escalate_immediately` (and human review) |
+| medium | `manual_review` |
+| low | `auto_reply`, **unless** a review trigger fired, then `manual_review` |
 
-1. **`risk_level == "high"`** (in other words, `final_score >= 0.75`). High-risk cases are never auto-actioned: the cost of a missed escalation, churn and reputational damage (see [`README.md`](README.md), Problem framing, "false negative impact"), is too high to leave to full automation.
-2. **The component scores disagree strongly**, meaning the spread `max(classical_score, cnn_score, rnn_score) - min(...)` exceeds `DISAGREEMENT_THRESHOLD = 0.35`. Strong disagreement means the models are telling fundamentally different stories about the same complaint (one reads it as low risk, another as high risk); an automated system should not pick a winner silently. A person should look at the underlying text and decide.
+`recommended_action` is computed deterministically (`decision.action_for`); the LLM cannot change it.
 
-In addition, the following should route to manual review even though they are not hard-coded as boolean checks. They are documented here so that reviewers and future engineers understand the intent (see also [`README.md`](README.md)'s human-review-trigger list):
-- `risk_level == "medium"`. Anything that is not a confidently "low" case gets a look before an automated reply goes out, consistent with the action table above.
-- The LLM itself flags `human_review_required = true` based on the complaint text, even when the deterministic checks above did not fire (see Section 5 below; this has been observed in practice and is a feature, not a bug).
-- The complaint text is too short or ambiguous for the text models to have produced a confident probability distribution (for example, all class probabilities close to uniform), or required input fields are missing or malformed.
-- An attached image is poor quality or unreadable, so `cnn_score` reflects the simulated fallback rather than a real visual assessment (see `_meta.cnn_mode` in `predict_hybrid`'s output, which is either `"simulated"` or `"real"`).
+## 3. Human-review triggers
 
-## 4. Why the cost of false positives and false negatives is treated differently
+Review is required when any of these holds:
 
-- **False positive** (the system flags a low-risk complaint as medium or high risk): wastes reviewer time and may cause the business to over-compensate a customer who was not actually at risk of escalating. Annoying and costly at scale, but recoverable.
-- **False negative** (the system misses a genuinely high-risk complaint): the customer churns, and possibly escalates publicly through social media, chargebacks, or regulator complaints, causing reputational and revenue damage that is much harder to undo. This is the costlier failure mode by a wide margin.
+| Trigger | Rule (parameters in `decision_config.json`) |
+|---|---|
+| high risk | `risk_level == "high"` |
+| medium risk | `risk_level == "medium"` |
+| `conflicted` | `min(P(low), P(high)) >= conflict_min`: the evidence points both ways |
+| `low_confidence` | top class probability `< max_proba_floor` |
+| `models_disagree` | total-variation distance between the two models' probabilities `> disagreement_tv` |
+| `short_text` | fewer than 4 words: too little for the text models |
 
-This asymmetry is exactly why the thresholds are deliberately conservative. The "medium" band starts at 0.45, just below the midpoint, rather than at 0.5, and the "high" band only requires 0.75 rather than, say, 0.9, so that borderline cases are pulled toward review and escalation rather than toward silent auto-reply. It is also why Section 3 forces review on disagreement even when the combined score looks safely "low": see [`evaluation_report.md`](evaluation_report.md), Q3, for a concrete example (C001) where the text models confidently said "low" but the simulated CNN term disagreed enough to trigger review anyway.
+All are implemented in code and unit tested. On the test split these send 29.7% of cases to humans (see `evaluation_report.md`). The previous max-minus-min score-spread rule is gone: it compared against a constant CNN value and fired on ~81% of cases.
 
-## 5. What the LLM is allowed, and not allowed, to do
+## 4. Cost asymmetry
 
-The LLM explanation layer (`llm_explainer.explain_with_gemini`) sits downstream of all scoring decisions, and both the prompt design and the surrounding code enforce a clear boundary around what it can and cannot influence.
+A false negative (a genuinely dissatisfied customer auto-replied) is costlier than a false positive (wasted reviewer time). Hence thresholds are tuned for high-class recall (target 0.70 on validation; achieved 0.73 on test, at precision 0.50), and any low case showing conflict or low confidence is withheld from auto-reply. Only 4.5% of truly-high test cases would have been auto-replied.
 
-**It is allowed to:**
-- Summarize the complaint and the model outputs in plain business language (`summary`).
-- Recommend a course of action in natural language (`recommended_action`).
-- Explain why, in terms of the actual scores and complaint text it was given (`reason`, `risk_notes`).
-- Independently set `human_review_required = true` even when the deterministic checks in Section 3 would not have forced it; in other words, the LLM is free to be more cautious than the floor requires. This was observed in practice for two of the five sample cases; see [`evaluation_report.md`](evaluation_report.md), Q5.
+## 5. What the LLM may do
 
-**It is not allowed to, and is structurally prevented from:**
-- **Changing `final_score` or `risk_level`.** Those are computed in [`hybrid_inference.py`](hybrid_inference.py) before the LLM is ever called, and are passed to it as read-only context (`model_outputs`).
-- **Inventing facts.** The prompt (`_build_prompt`) explicitly instructs it not to, and [`evaluation_report.md`](evaluation_report.md), Q4, confirms that no fabrication was observed across the sample runs: every detail it cited traces back to either the input text or the scores it was given.
-- **Turning `human_review_required` to `false`** when policy requires it to be `true`. `_enforce_policy` runs on every output path, the real API response, a malformed or incomplete API response, and the local fallback used when the API call fails, and force-sets the flag to `true` whenever Section 3's conditions are met, overwriting whatever the LLM itself produced. A safety-critical flag must never depend solely on an LLM following instructions correctly.
-- **Taking down the system if it is unavailable.** If the LLM call fails outright, returns invalid JSON, or omits a required field (`REQUIRED_FIELDS`), the system does not crash or silently drop the explanation. It falls back to `_fallback_explanation`, which is itself policy-correct (it derives `recommended_action` from `ACTION_BY_RISK` and still runs `_enforce_policy`). The rest of the hybrid pipeline, meaning the three trained models' scores, keeps working regardless of whether the LLM is available.
+Allowed: summarise, explain in business language, add notes, and be *more* cautious (it can set `human_review_required = true` where policy does not require it).
 
-## 6. How the LLM's API key is handled
+Not allowed, and enforced in code after the call:
+- changing scores, `risk_level`, or `recommended_action` (overwritten from the deterministic assessment);
+- lowering `human_review_required` (it is OR-ed with the policy value);
+- crashing the pipeline: failures, timeouts (15 s) and malformed or mistyped JSON fall back to a local explanation that is still policy-correct.
 
-`GEMINI_API_KEY` is read only from the environment, optionally by way of a local, git-ignored `.env` file loaded with `python-dotenv`. It is never hard-coded in source and never logged. See [`.env.example`](.env.example) and the Setup section of [`README.md`](README.md) for how to configure it.
+Complaint text is untrusted: it is length-capped, our delimiter tag is stripped, it is wrapped in `<complaint>` tags the prompt declares to be data, and free-text outputs are length-capped. Injection cannot change the action or review flag because those never come from the LLM.
+
+## 6. Secrets
+
+`GEMINI_API_KEY` comes only from the environment / untracked `.env`. If `API_KEY` is set, `/predict` requires a matching `X-API-Key` header.
