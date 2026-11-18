@@ -8,7 +8,7 @@ VALID = {"review_text": "The zipper broke after one wear and support never repli
          "class_name": "Dresses"}
 
 FAKE_RESULT = {
-    "model_outputs": {"classical_score": 0.5, "rnn_score": 0.4, "final_score": 0.45,
+    "model_outputs": {"classical_score": 0.5, "transformer_score": 0.4, "final_score": 0.45,
                       "probabilities": {"low": 0.3, "medium": 0.3, "high": 0.4}, "risk_level": "high",
                       "recommended_action": "escalate_immediately", "human_review_required": True,
                       "review_reasons": []},
@@ -66,7 +66,7 @@ def test_internal_errors_do_not_leak_details(monkeypatch):
 
 def test_missing_model_artifact_is_503(monkeypatch):
     def missing(d):
-        raise FileNotFoundError("/app/rnn_model.keras")
+        raise FileNotFoundError("/app/transformer_assets/weights_int8.npz")
     monkeypatch.setattr(app_module.hybrid_inference, "predict_hybrid", missing)
     monkeypatch.delenv("API_KEY", raising=False)
     r = TestClient(app_module.app).post("/predict", json=VALID)
@@ -79,3 +79,11 @@ def test_api_key_enforced_when_configured(client, monkeypatch):
     assert client.post("/predict", json=VALID).status_code == 401
     assert client.post("/predict", json=VALID, headers={"X-API-Key": "wrong"}).status_code == 401
     assert client.post("/predict", json=VALID, headers={"X-API-Key": "s3cret"}).status_code == 200
+
+
+def test_stats_endpoint_records_predictions(client):
+    app_module.monitor.__init__(baseline={})
+    client.post("/predict", json=VALID)
+    snap = client.get("/stats").json()
+    assert snap["n"] == 1
+    assert snap["current"]["level_share"]["high"] == 1.0

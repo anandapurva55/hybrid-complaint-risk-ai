@@ -1,0 +1,9 @@
+{
+  "source": "test split",
+  "action_share": {
+    "auto_reply": 0.7071,
+    "manual_review": 0.1657,
+    "escalate_immediately": 0.1272
+  },
+  "mean_top_probability": 0.855
+}

@@ -1,12 +1,15 @@
 # Serving / inference dependencies, pinned to the versions the committed model
 # artifacts were trained and tested with (Python 3.11). The pickled sklearn
-# pipeline and the Keras 3 .keras files are version-sensitive: retrain if you bump these.
+# pipeline is version-sensitive: retrain if you bump scikit-learn.
+# CPU-only torch wheels (the default Linux wheel bundles CUDA and is ~2 GB larger):
+--extra-index-url https://download.pytorch.org/whl/cpu
 scikit-learn==1.9.1
 pandas==3.1.1
 numpy==2.4.6
 joblib==1.6.0
-tensorflow==2.21.0
-keras==3.15.1
+torch==2.15.0
+transformers==5.23.0
 fastapi==0.164.0
 uvicorn==0.54.0
 pydantic==2.14.3
+boto3==1.44.5

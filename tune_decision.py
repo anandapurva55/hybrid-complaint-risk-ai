@@ -32,7 +32,7 @@ CONFIG_PATH = "decision_config.json"
 
 def load_probas(split):
     df = pd.read_csv(f"{split}.csv")
-    return df, hi.classical_proba(df), hi.rnn_proba(df[TEXT_FEATURE].astype(str))
+    return df, hi.classical_proba(df), hi.transformer_proba(df[TEXT_FEATURE].astype(str))
 
 
 def fit_temperature(proba, y_idx):
@@ -52,7 +52,7 @@ def main():
 
     t_cl = fit_temperature(p_cl, y_idx)
     t_rn = fit_temperature(p_rn, y_idx)
-    print(f"Temperatures: classical={t_cl} rnn={t_rn}")
+    print(f"Temperatures: classical={t_cl} transformer={t_rn}")
     pc, pr = apply_temperature(p_cl, t_cl), apply_temperature(p_rn, t_rn)
 
     nll_by_w = {}
@@ -80,7 +80,7 @@ def main():
 
     cfg = dict(DEFAULT_CONFIG)
     cfg.update({
-        "w_classical": float(best.w), "temp_classical": t_cl, "temp_rnn": t_rn,
+        "w_classical": float(best.w), "temp_classical": t_cl, "temp_text": t_rn,
         "t_high": float(best.t_high), "t_medium": float(best.t_medium),
     })
     with open(CONFIG_PATH, "w") as f:

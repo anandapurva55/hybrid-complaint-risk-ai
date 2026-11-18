@@ -1,15 +1,16 @@
-"""End-to-end smoke test against the committed model artifacts (needs TensorFlow)."""
+"""End-to-end smoke test against the committed model artifacts (needs torch + transformers)."""
 import os
 
 import pytest
 
-pytest.importorskip("tensorflow")
+pytest.importorskip("torch")
+pytest.importorskip("transformers")
 pytest.importorskip("sklearn")
 
 import hybrid_inference as hi  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
-    not (os.path.exists(hi.CLASSICAL_MODEL_PATH) and os.path.exists(hi.RNN_MODEL_PATH)),
+    not (os.path.exists(hi.CLASSICAL_MODEL_PATH) and os.path.exists(os.path.join("transformer_assets", "weights_int8.npz"))),
     reason="model artifacts not present",
 )
 
@@ -43,6 +44,8 @@ def test_very_short_text_is_never_auto_replied():
     assert mo["recommended_action"] != "auto_reply"
 
 
-def test_single_sample_inference_does_not_crash_on_keras_dtype():
-    # regression: Keras 3 rejects numpy unicode arrays for batch size 1
-    assert run("Fine.")["model_outputs"]["risk_level"]
+def test_single_sample_and_batch_agree():
+    one = hi.transformer_proba(["Terrible quality, it ripped on the first day."])
+    both = hi.transformer_proba(["Terrible quality, it ripped on the first day.", "Lovely dress, fits well."])
+    assert one.shape == (1, 3) and both.shape == (2, 3)
+    assert abs(one[0] - both[0]).max() < 1e-3

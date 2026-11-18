@@ -6,8 +6,8 @@ import from the evaluation and tuning scripts.
 
 Pipeline, all on class-probability vectors in CLASSES order (low, medium, high):
 
-  1. calibrate each text model with a single temperature (fit on validation)
-  2. blend:   p = w * p_classical + (1 - w) * p_rnn
+  1. calibrate each text model (classical, fine-tuned DistilBERT) with a single temperature (fit on validation)
+  2. blend:   p = w * p_classical + (1 - w) * p_text
   3. decide:  high   if p[high] >= t_high
               medium if p[high] + p[medium] >= t_medium
               low    otherwise
@@ -31,9 +31,9 @@ CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decision
 # Used only if decision_config.json is missing (e.g. unit tests). Real values
 # are produced by tune_decision.py and written to decision_config.json.
 DEFAULT_CONFIG = {
-    "w_classical": 0.6,
+    "w_classical": 0.2,
     "temp_classical": 1.0,
-    "temp_rnn": 1.0,
+    "temp_text": 1.0,
     "t_high": 0.35,
     "t_medium": 0.50,
     # human-review triggers
@@ -57,8 +57,8 @@ def apply_temperature(proba, temperature):
     return p / p.sum(axis=-1, keepdims=True)
 
 
-def blend(p_classical, p_rnn, w_classical):
-    return w_classical * np.asarray(p_classical) + (1.0 - w_classical) * np.asarray(p_rnn)
+def blend(p_classical, p_text, w_classical):
+    return w_classical * np.asarray(p_classical) + (1.0 - w_classical) * np.asarray(p_text)
 
 
 def decide_levels(proba, t_high, t_medium):
@@ -73,7 +73,7 @@ def total_variation(p, q):
     return 0.5 * np.abs(np.asarray(p) - np.asarray(q)).sum(axis=-1)
 
 
-def review_flags(p_final, p_classical=None, p_rnn=None, cfg=None):
+def review_flags(p_final, p_classical=None, p_text=None, cfg=None):
     """Boolean arrays (N,) for each human-review trigger, keyed by name."""
     cfg = cfg or load_config()
     p_final = np.atleast_2d(p_final)
@@ -81,8 +81,8 @@ def review_flags(p_final, p_classical=None, p_rnn=None, cfg=None):
         "conflicted": np.minimum(p_final[:, 0], p_final[:, 2]) >= cfg["conflict_min"],
         "low_confidence": p_final.max(axis=1) < cfg["max_proba_floor"],
     }
-    if p_classical is not None and p_rnn is not None:
-        flags["models_disagree"] = total_variation(p_classical, p_rnn) > cfg["disagreement_tv"]
+    if p_classical is not None and p_text is not None:
+        flags["models_disagree"] = total_variation(p_classical, p_text) > cfg["disagreement_tv"]
     else:
         flags["models_disagree"] = np.zeros(len(p_final), dtype=bool)
     return flags
@@ -118,7 +118,7 @@ def final_score(proba):
     return proba[:, 1] * 0.5 + proba[:, 2]
 
 
-def assess(p_classical, p_rnn, cfg=None, extra_flags=None):
+def assess(p_classical, p_text, cfg=None, extra_flags=None):
     """Full deterministic assessment for (N, 3) probability arrays (CLASSES order).
 
     Returns a dict of arrays: p_final, level, review (bool), flags, action.
@@ -126,7 +126,7 @@ def assess(p_classical, p_rnn, cfg=None, extra_flags=None):
     """
     cfg = cfg or load_config()
     pc = apply_temperature(p_classical, cfg["temp_classical"])
-    pr = apply_temperature(p_rnn, cfg["temp_rnn"])
+    pr = apply_temperature(p_text, cfg["temp_text"])
     p_final = blend(pc, pr, cfg["w_classical"])
     levels = decide_levels(p_final, cfg["t_high"], cfg["t_medium"])
     flags = review_flags(p_final, pc, pr, cfg)
@@ -134,5 +134,5 @@ def assess(p_classical, p_rnn, cfg=None, extra_flags=None):
         flags.update(extra_flags)
     review = human_review_required(levels, flags)
     actions = np.array([action_for(l, r) for l, r in zip(levels, review)])
-    return {"p_classical": pc, "p_rnn": pr, "p_final": p_final, "level": levels,
+    return {"p_classical": pc, "p_text": pr, "p_final": p_final, "level": levels,
             "review": review, "flags": flags, "action": actions}

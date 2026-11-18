@@ -21,12 +21,15 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 import hybrid_inference
+from monitoring import Monitor
 
 logger = logging.getLogger("hybrid-risk-api")
 
+monitor = Monitor()
+
 app = FastAPI(
     title="Hybrid Dissatisfaction-Risk Triage API",
-    description="Classical ML + RNN decision with an LLM explanation. Risk is a proxy "
+    description="Classical ML + fine-tuned DistilBERT decision with an LLM explanation. Risk is a proxy "
                 "derived from star ratings, not an observed escalation outcome.",
     version="2.0.0",
 )
@@ -53,7 +56,7 @@ class ComplaintInput(BaseModel):
 
 class ModelOutputs(BaseModel):
     classical_score: float
-    rnn_score: float
+    transformer_score: float
     final_score: float
     probabilities: Dict[str, float]
     risk_level: str
@@ -88,12 +91,20 @@ def health():
     return {"status": "ok", "service": "hybrid-complaint-risk-api"}
 
 
+@app.get("/stats", dependencies=[Depends(require_api_key)])
+def stats():
+    """Rolling-window drift monitor (no complaint text or identifiers)."""
+    return monitor.snapshot()
+
+
 @app.post("/predict", response_model=PredictionResponse, response_model_by_alias=True,
           dependencies=[Depends(require_api_key)])
 def predict(payload: ComplaintInput):
     """Runs the full hybrid pipeline on one complaint."""
     try:
-        return hybrid_inference.predict_hybrid(payload.model_dump())
+        result = hybrid_inference.predict_hybrid(payload.model_dump())
+        monitor.record(result)
+        return result
     except FileNotFoundError:
         logger.exception("Model artifact missing")
         raise HTTPException(status_code=503, detail="Model artifacts unavailable.") from None

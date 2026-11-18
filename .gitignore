@@ -11,3 +11,7 @@ val.csv
 test.csv
 
 llm_eval_samples.json
+
+# fp32 fine-tuned weights (~268 MB, over GitHub limit); the int8 copy in transformer_assets/ is what ships
+transformer_model/
+transformer_*proba.npy

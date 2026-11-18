@@ -127,3 +127,14 @@ def test_long_fields_are_capped(monkeypatch):
     use_client(monkeypatch, FakeLLM(good(summary="x" * 50_000)))
     out = le.explain_decision({"complaint_text": "x", "model_outputs": LOW})
     assert len(out["summary"]) == le.MAX_FIELD_CHARS
+
+
+def test_extract_json_strips_fences_and_prose():
+    assert json.loads(le._extract_json('Sure!\n```json\n{"a": 1}\n```')) == {"a": 1}
+    assert le._extract_json("no json here") == "no json here"
+
+
+def test_provider_none_uses_fallback(monkeypatch):
+    monkeypatch.setattr(le, "LLM_PROVIDER", "none")
+    out = le.explain_decision({"complaint_text": "x", "model_outputs": HIGH})
+    assert out["_source"] == "fallback"

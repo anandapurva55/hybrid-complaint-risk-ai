@@ -1,9 +1,9 @@
 {
   "decision": {
-    "w_classical": 0.7,
+    "w_classical": 0.1,
     "temp_classical": 0.9,
-    "temp_rnn": 1.45,
-    "t_high": 0.25,
+    "temp_text": 1.15,
+    "t_high": 0.375,
     "t_medium": 0.225,
     "conflict_min": 0.3,
     "max_proba_floor": 0.45,
@@ -12,7 +12,7 @@
   "selection": {
     "split": "val",
     "target_high_recall": 0.7,
-    "val_macro_f1": 0.6264,
-    "val_recall_high": 0.7331
+    "val_macro_f1": 0.6825,
+    "val_recall_high": 0.7022
   }
 }

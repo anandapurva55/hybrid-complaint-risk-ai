@@ -1,5 +1,7 @@
-# Training, evaluation, tests and the exploration notebook.
+# Training, evaluation, tests, baselines and the exploration notebook.
 -r requirements.txt
+tensorflow==2.21.0   # LSTM baseline (train_rnn_model.py) and CNN demo only; not used in serving
+keras==3.15.1
 pytest==9.2.0
 httpx==0.28.1
 matplotlib==3.11.2

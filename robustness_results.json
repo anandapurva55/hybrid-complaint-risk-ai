@@ -1,0 +1,134 @@
+{
+  "bootstrap_95ci": {
+    "hybrid": {
+      "macro_f1": [
+        0.6523,
+        0.694
+      ],
+      "high_recall": [
+        0.6602,
+        0.755
+      ],
+      "high_precision": [
+        0.5399,
+        0.6291
+      ]
+    },
+    "transformer_alone": {
+      "macro_f1": [
+        0.6467,
+        0.6872
+      ],
+      "high_recall": [
+        0.661,
+        0.756
+      ],
+      "high_precision": [
+        0.5261,
+        0.6145
+      ]
+    },
+    "hybrid_minus_transformer_macro_f1": [
+      0.0017,
+      0.0117
+    ],
+    "n_boot": 1000
+  },
+  "classical_5fold_cv_argmax": {
+    "f1_macro": [
+      0.586,
+      0.0113
+    ],
+    "accuracy": [
+      0.8274,
+      0.005
+    ]
+  },
+  "subgroups": {
+    "age_band": {
+      "<30": {
+        "n": 441,
+        "macro_f1": 0.664,
+        "high_recall": 0.75,
+        "n_true_high": 52,
+        "auto_reply_share": 0.673,
+        "true_high_auto_replied": 0.0
+      },
+      "30-45": {
+        "n": 1624,
+        "macro_f1": 0.676,
+        "high_recall": 0.696,
+        "n_true_high": 161,
+        "auto_reply_share": 0.71,
+        "true_high_auto_replied": 0.019
+      },
+      "46-60": {
+        "n": 980,
+        "macro_f1": 0.677,
+        "high_recall": 0.712,
+        "n_true_high": 111,
+        "auto_reply_share": 0.7,
+        "true_high_auto_replied": 0.009
+      },
+      "60+": {
+        "n": 352,
+        "macro_f1": 0.659,
+        "high_recall": 0.71,
+        "n_true_high": 31,
+        "auto_reply_share": 0.756,
+        "true_high_auto_replied": 0.032
+      }
+    },
+    "Department Name": {
+      "Bottoms": {
+        "n": 543,
+        "macro_f1": 0.633,
+        "high_recall": 0.604,
+        "n_true_high": 48,
+        "auto_reply_share": 0.716,
+        "true_high_auto_replied": 0.021
+      },
+      "Dresses": {
+        "n": 973,
+        "macro_f1": 0.668,
+        "high_recall": 0.722,
+        "n_true_high": 108,
+        "auto_reply_share": 0.669,
+        "true_high_auto_replied": 0.009
+      },
+      "Intimate": {
+        "n": 247,
+        "macro_f1": 0.695,
+        "high_recall": 0.647,
+        "n_true_high": 17,
+        "auto_reply_share": 0.753,
+        "true_high_auto_replied": 0.059
+      },
+      "Jackets": {
+        "n": 133,
+        "macro_f1": 0.674,
+        "high_recall": 0.762,
+        "n_true_high": 21,
+        "auto_reply_share": 0.714,
+        "true_high_auto_replied": 0.0
+      },
+      "Tops": {
+        "n": 1486,
+        "macro_f1": 0.686,
+        "high_recall": 0.733,
+        "n_true_high": 161,
+        "auto_reply_share": 0.721,
+        "true_high_auto_replied": 0.012
+      }
+    }
+  },
+  "ordinal_experiment": {
+    "note": "best test macro-F1 over a threshold grid (optimistic, for comparing model forms only)",
+    "multinomial_classical": 0.6496,
+    "cumulative_binary_ordinal": 0.6428,
+    "auc_high": {
+      "multinomial": 0.9338,
+      "ordinal": 0.9292
+    }
+  }
+}

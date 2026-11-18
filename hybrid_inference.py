@@ -3,7 +3,7 @@ Hybrid scoring and end-to-end inference.
 
 Components that make the decision (all deterministic once trained):
   * classical ML  - TF-IDF + tabular features -> Logistic Regression
-  * RNN / LSTM    - review text only
+  * transformer   - fine-tuned DistilBERT on the review text (int8-compressed weights)
 Their calibrated class probabilities are blended and mapped to a risk level by
 decision.py using parameters tuned on the validation split (decision_config.json).
 The LLM (llm_explainer.py) only EXPLAINS the result; it cannot change it.
@@ -43,12 +43,11 @@ from risk_common import CLASSES, FEATURE_COLUMNS, proba_to_score, reorder_proba
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 CLASSICAL_MODEL_PATH = os.path.join(_HERE, "classical_model.pkl")
-RNN_MODEL_PATH = os.path.join(_HERE, "rnn_model.keras")
 
 MIN_WORDS = 4  # shorter texts give the text models too little to go on -> force review
 
 _classical_model = None
-_rnn_model = None
+_transformer = None
 
 
 def _load_classical():
@@ -58,12 +57,12 @@ def _load_classical():
     return _classical_model
 
 
-def _load_rnn():
-    global _rnn_model
-    if _rnn_model is None:
-        import tensorflow as tf  # imported lazily so pure-logic tests need no TF
-        _rnn_model = tf.keras.models.load_model(RNN_MODEL_PATH)
-    return _rnn_model
+def _load_transformer():
+    global _transformer
+    if _transformer is None:
+        import compact_transformer  # imported lazily: needs torch + transformers
+        _transformer = compact_transformer.load()
+    return _transformer
 
 
 def classical_proba(df):
@@ -72,15 +71,18 @@ def classical_proba(df):
     return reorder_proba(model.predict_proba(df[FEATURE_COLUMNS]), model.classes_)
 
 
-def rnn_proba(texts):
-    """(N, 3) probabilities in CLASSES order from a sequence of review texts.
-
-    Passed as a tf.string tensor: Keras 3 rejects numpy unicode arrays for
-    batch size 1 ("Invalid dtype: str<N>")."""
-    import tensorflow as tf
-    model = _load_rnn()
-    batch = tf.constant([str(t) for t in texts], dtype=tf.string)
-    return np.asarray(model.predict(batch, verbose=0))
+def transformer_proba(texts, batch_size=32, max_len=128):
+    """(N, 3) probabilities in CLASSES order from the fine-tuned DistilBERT."""
+    import torch
+    model, tok = _load_transformer()
+    texts = [str(t) for t in texts]
+    out = []
+    with torch.no_grad():
+        for i in range(0, len(texts), batch_size):
+            enc = tok(texts[i:i + batch_size], truncation=True, max_length=max_len,
+                      padding=True, return_tensors="pt")
+            out.append(torch.softmax(model(**enc).logits, dim=-1).numpy())
+    return np.concatenate(out)
 
 
 def _input_frame(input_data):
@@ -101,10 +103,10 @@ def predict_hybrid(input_data, explain=True):
     text = str(input_data["review_text"])
 
     p_cl = classical_proba(df)
-    p_rn = rnn_proba([text])
+    p_tx = transformer_proba([text])
 
     short = np.array([len(text.split()) < MIN_WORDS])
-    result = assess(p_cl, p_rn, cfg, extra_flags={"short_text": short})
+    result = assess(p_cl, p_tx, cfg, extra_flags={"short_text": short})
     level = str(result["level"][0])
     review = bool(result["review"][0])
     reasons = review_reasons(result["flags"])
@@ -112,7 +114,7 @@ def predict_hybrid(input_data, explain=True):
 
     model_outputs = {
         "classical_score": round(float(proba_to_score(result["p_classical"], CLASSES)[0]), 3),
-        "rnn_score": round(float(proba_to_score(result["p_rnn"], CLASSES)[0]), 3),
+        "transformer_score": round(float(proba_to_score(result["p_text"], CLASSES)[0]), 3),
         "final_score": round(float(final_score(p_final)[0]), 3),
         "probabilities": {c: round(float(p), 3) for c, p in zip(CLASSES, p_final[0])},
         "risk_level": level,

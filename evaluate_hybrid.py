@@ -76,7 +76,7 @@ def main():
     y_idx = np.array([CLASSES.index(v) for v in y])
 
     p_cl = hi.classical_proba(test_df)
-    p_rn = hi.rnn_proba(test_df[TEXT_FEATURE].astype(str))
+    p_rn = hi.transformer_proba(test_df[TEXT_FEATURE].astype(str))
     short = test_df[TEXT_FEATURE].astype(str).str.split().str.len().to_numpy() < MIN_WORDS
     res = assess(p_cl, p_rn, cfg, extra_flags={"short_text": short})
     levels = res["level"]
@@ -89,25 +89,31 @@ def main():
         "components_argmax": {
             "majority_class_low": metrics(y, np.full(len(y), "low")),
             "classical": metrics(y, argmax(p_cl)),
-            "rnn": metrics(y, argmax(p_rn)),
+            "transformer": metrics(y, argmax(p_rn)),
         },
         "components_with_tuned_thresholds": {
             "classical_alone": metrics(y, decide_levels(res["p_classical"], cfg["t_high"], cfg["t_medium"])),
-            "rnn_alone": metrics(y, decide_levels(res["p_rnn"], cfg["t_high"], cfg["t_medium"])),
+            "transformer_alone": metrics(y, decide_levels(res["p_text"], cfg["t_high"], cfg["t_medium"])),
         },
         "hybrid": metrics(y, levels),
         "auc_high_vs_rest": {
             "classical": round(roc_auc_score(y == "high", res["p_classical"][:, 2]), 4),
-            "rnn": round(roc_auc_score(y == "high", res["p_rnn"][:, 2]), 4),
+            "transformer": round(roc_auc_score(y == "high", res["p_text"][:, 2]), 4),
             "hybrid": round(roc_auc_score(y == "high", res["p_final"][:, 2]), 4),
         },
         "calibration_ece": {
             "classical_raw": round(ece(p_cl, y_idx), 4), "classical_calibrated": round(ece(res["p_classical"], y_idx), 4),
-            "rnn_raw": round(ece(p_rn, y_idx), 4), "rnn_calibrated": round(ece(res["p_rnn"], y_idx), 4),
+            "transformer_raw": round(ece(p_rn, y_idx), 4), "transformer_calibrated": round(ece(res["p_text"], y_idx), 4),
             "hybrid": round(ece(res["p_final"], y_idx), 4),
         },
         "ablation_with_recommended_ind_classical_argmax": ablation_with_recommended_ind(train_df, test_df),
     }
+
+    import baselines
+    if baselines.rnn_available():
+        p_lstm = baselines.rnn_proba(test_df[TEXT_FEATURE].astype(str))
+        out["components_argmax"]["rnn_lstm_baseline_not_in_decision"] = metrics(y, argmax(p_lstm))
+        out["auc_high_vs_rest"]["rnn_lstm_baseline"] = round(roc_auc_score(y == "high", p_lstm[:, 2]), 4)
 
     action = res["action"]
     true_high = y == "high"
@@ -128,6 +134,10 @@ def main():
         "confusion_matrix_rows_true_cols_pred": [[2550, 66, 2], [176, 228, 20], [29, 279, 47]],
         "share_forced_to_human_review": 0.807, "share_scored_high": 0.020,
     }
+
+    with open("monitoring_baseline.json", "w") as f:  # reference distribution for monitoring.py
+        json.dump({"source": "test split", "action_share": out["triage"]["action_share"],
+                   "mean_top_probability": round(float(res["p_final"].max(axis=1).mean()), 3)}, f, indent=2)
 
     with open("evaluation_results.json", "w") as f:
         json.dump(out, f, indent=2)

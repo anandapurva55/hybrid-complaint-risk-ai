@@ -9,9 +9,12 @@ mistake nor text injected into a complaint can change them.
 
 Security
 --------
-* The LLM runs locally through Ollama: no API key and no data leaves the machine.
-  Configure with OLLAMA_HOST (default http://localhost:11434) and OLLAMA_MODEL
-  (default llama3.2).
+* Provider is chosen with LLM_PROVIDER:
+    - "ollama" (default): local Ollama server, no API key, no data leaves the machine.
+      OLLAMA_HOST (default http://localhost:11434), OLLAMA_MODEL (default llama3.2).
+    - "bedrock": Amazon Bedrock Converse API using the ambient AWS credentials / IAM
+      role (no key in code). BEDROCK_MODEL_ID (default us.amazon.nova-lite-v1:0).
+    - "none": skip the LLM and always use the local fallback explanation.
 * Complaint text is untrusted. It is truncated, stripped of our delimiter
   tags, and placed inside <complaint> tags that the prompt tells the model to
   treat strictly as data. As defence in depth, `recommended_action` and
@@ -27,6 +30,8 @@ import urllib.request
 
 from decision import ACTION_BY_RISK
 
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
 LLM_TIMEOUT_S = float(os.environ.get("LLM_TIMEOUT_S", "60"))
@@ -36,6 +41,38 @@ MAX_FIELD_CHARS = 1500
 REQUIRED_FIELDS = ["summary", "recommended_action", "reason", "human_review_required", "risk_notes"]
 
 def _generate(prompt):
+    """Dispatch to the configured provider; returns the model's raw text."""
+    if LLM_PROVIDER == "bedrock":
+        return _generate_bedrock(prompt)
+    if LLM_PROVIDER == "none":
+        raise RuntimeError("LLM disabled (LLM_PROVIDER=none)")
+    return _generate_ollama(prompt)
+
+
+_bedrock = None
+
+
+def _extract_json(text):
+    """Models without a JSON mode may wrap JSON in prose or code fences."""
+    start, end = text.find("{"), text.rfind("}")
+    return text[start:end + 1] if start != -1 and end > start else text
+
+
+def _generate_bedrock(prompt):
+    global _bedrock
+    if _bedrock is None:
+        import boto3
+        from botocore.config import Config
+        _bedrock = boto3.client("bedrock-runtime", config=Config(read_timeout=LLM_TIMEOUT_S, retries={"max_attempts": 1}))
+    resp = _bedrock.converse(
+        modelId=BEDROCK_MODEL_ID,
+        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        inferenceConfig={"temperature": 0, "maxTokens": 700},
+    )
+    return _extract_json(resp["output"]["message"]["content"][0]["text"])
+
+
+def _generate_ollama(prompt):
     """Call Ollama's chat endpoint in JSON mode and return the model's text.
     Raises on connection errors, timeouts or HTTP errors; the caller falls back."""
     body = json.dumps({
@@ -122,7 +159,9 @@ def numbers_grounded(explanation, model_outputs):
 
 
 def _clip(value):
-    return value[:MAX_FIELD_CHARS] if isinstance(value, str) else value
+    if not isinstance(value, str):
+        return value
+    return _TAG_RE.sub("", value)[:MAX_FIELD_CHARS]
 
 
 def _normalise(explanation, model_outputs):
