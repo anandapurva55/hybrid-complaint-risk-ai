@@ -6,9 +6,9 @@ How model output becomes a business action, when a human must review, and what t
 
 ## 1. Producing the risk level
 
-1. Each text model (classical, RNN) outputs class probabilities `[P(low), P(medium), P(high)]`.
+1. Each text model (classical; fine-tuned DistilBERT) outputs class probabilities `[P(low), P(medium), P(high)]`.
 2. Each is temperature-calibrated (one scalar per model, fit on validation).
-3. They are blended: `p = w * p_classical + (1 - w) * p_rnn` (`w` = 0.7, chosen to minimise validation log-loss).
+3. They are blended: `p = w * p_classical + (1 - w) * p_transformer` (`w` = 0.1, chosen to minimise validation log-loss; the old LSTM got weight 0 and was dropped).
 4. Decision on the **probabilities** (not a collapsed scalar):
    - `high` if `P(high) >= t_high`
    - else `medium` if `P(high) + P(medium) >= t_medium`
@@ -40,14 +40,14 @@ Review is required when any of these holds:
 | medium risk | `risk_level == "medium"` |
 | `conflicted` | `min(P(low), P(high)) >= conflict_min`: the evidence points both ways |
 | `low_confidence` | top class probability `< max_proba_floor` |
-| `models_disagree` | total-variation distance between the two models' probabilities `> disagreement_tv` |
+| `models_disagree` | classical vs transformer: total-variation distance between their probabilities `> disagreement_tv` |
 | `short_text` | fewer than 4 words: too little for the text models |
 
-All are implemented in code and unit tested. On the test split these send 29.7% of cases to humans (see `evaluation_report.md`). The previous max-minus-min score-spread rule is gone: it compared against a constant CNN value and fired on ~81% of cases.
+All are implemented in code and unit tested. On the test split these send 29.3% of cases to humans (see `evaluation_report.md`). The previous max-minus-min score-spread rule is gone: it compared against a constant CNN value and fired on ~81% of cases.
 
 ## 4. Cost asymmetry
 
-A false negative (a genuinely dissatisfied customer auto-replied) is costlier than a false positive (wasted reviewer time). Hence thresholds are tuned for high-class recall (target 0.70 on validation; achieved 0.73 on test, at precision 0.50), and any low case showing conflict or low confidence is withheld from auto-reply. Only 4.5% of truly-high test cases would have been auto-replied.
+A false negative (a genuinely dissatisfied customer auto-replied) is costlier than a false positive (wasted reviewer time). Hence thresholds are tuned for high-class recall (target 0.70 on validation; achieved 0.71 on test, at precision 0.58), and any low case showing conflict or low confidence is withheld from auto-reply. Only 1.4% of truly-high test cases (5 of 355) would have been auto-replied.
 
 ## 5. What the LLM may do
 
@@ -56,11 +56,11 @@ Allowed: summarise, explain in business language, add notes, and be *more* cauti
 Not allowed, and enforced in code after the call:
 - changing scores, `risk_level`, or `recommended_action` (overwritten from the deterministic assessment);
 - lowering `human_review_required` (it is OR-ed with the policy value);
-- crashing the pipeline: Ollama being down, timeouts (60 s) and malformed or mistyped JSON fall back to a local explanation that is still policy-correct;
+- crashing the pipeline: provider errors, timeouts (60 s) and malformed or mistyped JSON fall back to a local explanation that is still policy-correct. Provider is `LLM_PROVIDER` = `ollama` (default, local), `bedrock`, or `none`;
 - being accepted when it is useless or wrong: explanations that are empty, state a risk level different from the decision, or quote numbers not in `model_outputs` are rejected and replaced by the fallback.
 
 Complaint text is untrusted: it is length-capped, our delimiter tag is stripped, it is wrapped in `<complaint>` tags the prompt declares to be data, and free-text outputs are length-capped. Injection cannot change the action or review flag because those never come from the LLM.
 
 ## 6. Secrets and data
 
-The LLM runs locally through Ollama, so no API key is needed and no data leaves the machine. If `API_KEY` is set, `/predict` requires a matching `X-API-Key` header.
+With Ollama (default) no API key is needed and no data leaves the machine; with Bedrock, access is by IAM role and complaint text is sent to AWS Bedrock. If `API_KEY` is set, `/predict` requires a matching `X-API-Key` header.

@@ -10,10 +10,10 @@ The training label is derived from the star rating (1-2 stars = high, 3 = medium
 | Component | Role | Notes |
 |---|---|---|
 | Classical ML | TF-IDF (1-2 grams) + age, positive-feedback count, division/department/class -> Logistic Regression | `Recommended IND` removed (leaks the label) |
-| RNN/LSTM | Text-only classifier | Full train split, early stopping |
+| Fine-tuned DistilBERT | Text classifier, carries ~90% of the blend | int8-compressed weights (60 MB); LSTM baseline dropped (blend weight 0) |
 | Decision layer | Blend calibrated probabilities, apply tuned thresholds, review triggers | `decision.py`, `decision_config.json` |
-| LLM (llama3.2 via Ollama, local) | Explanation only | Cannot change level, action or review flag; bad output is rejected and replaced by a fallback |
-| CNN | **Not used** | Fashion-MNIST demo only; cannot score complaint photos |
+| LLM (llama3.2 via Ollama locally, or Bedrock Nova Lite) | Explanation only | Cannot change level, action or review flag; bad output is rejected and replaced by a fallback |
+| LSTM, CNN | **Not used** | LSTM is a comparison baseline; the CNN is a Fashion-MNIST demo that cannot score complaint photos |
 
 ## Intended use
 Prioritising and routing English-language product feedback for human reviewers; auto-acknowledging clearly positive messages.
@@ -24,14 +24,14 @@ Fully automated customer-facing decisions on negative feedback; non-English text
 ## Performance (test split, n = 3,397; see `evaluation_report.md`)
 | | Value |
 |---|---|
-| Macro-F1 (hybrid, tuned) | 0.622 |
-| Recall on high / precision on high | 0.730 / 0.498 |
-| Recall on medium | 0.377 |
-| Truly-high cases reaching a human | 339 / 355 |
-| Share of cases sent to human review | 29.7% |
-| Share auto-replied | 70.3% (96.3% truly low) |
+| Macro-F1 (hybrid, tuned) | 0.673 (95% CI 0.652-0.694) |
+| Recall on high / precision on high | 0.710 / 0.583 |
+| Recall / precision on medium | 0.507 / 0.395 |
+| Truly-high cases reaching a human | 350 / 355 |
+| Share of cases sent to human review | 29.3% |
+| Share auto-replied | 70.7% (97.5% truly low) |
 
-Hybrid beats classical-alone only marginally (+0.003 macro-F1, within noise).
+The transformer provides the gain; the blend with the classical model adds only +0.002 to +0.012 macro-F1.
 
 ## Input schema
 `review_text` (1-5000 chars), `age` (10-120), `positive_feedback_count` (>= 0), `division_name`, `department_name`, `class_name`; optional `customer_id`. Unknown fields (`image`, `recommended_ind`) are ignored.
@@ -41,13 +41,13 @@ Hybrid beats classical-alone only marginally (+0.003 macro-F1, within noise).
 
 ## Known limitations
 - Proxy label (above); the biggest limitation.
-- Medium class is weak (F1 0.35).
-- About half of "high" flags are false alarms by design (recall-first).
+- Medium class is the weakest (F1 0.44).
+- About 4 in 10 "high" flags are false alarms by design (recall-first).
 - Reviews differ from support tickets in style and length.
-- One random split, no confidence intervals; no cross-validation.
+- Bootstrap CIs are reported, but there is one random split and one transformer training run.
 - llama3.2 (3B) explanations: ~18% of raw responses rejected by validators (n = 45); faithfulness beyond numbers/risk level not human-graded.
-- No drift monitoring; dependency versions are pinned and the pickled/Keras artifacts must be retrained if they change.
-- Fairness: only a few demographic-adjacent features (age); no subgroup analysis has been done.
+- Drift monitoring is in-process only (`GET /stats`); dependency versions are pinned and the pickled/Keras artifacts must be retrained if they change.
+- Fairness: subgroup metrics by age band and department are in the evaluation report (fairly even; Bottoms has lowest high recall, 0.60); no formal fairness test.
 
 ## Monitoring suggestions
-Track class mix, `auto_reply`/review shares, mean top-class confidence, share of `fallback` explanations, and, once real escalation outcomes exist, recalibrate and re-validate against them.
+`GET /stats` reports these over a rolling window and alerts on shifts versus the test-split baseline. Track class mix, `auto_reply`/review shares, mean top-class confidence, share of `fallback` explanations, and, once real escalation outcomes exist, recalibrate and re-validate against them.

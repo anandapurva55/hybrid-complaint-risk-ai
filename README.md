@@ -1,10 +1,10 @@
-# Hybrid Dissatisfaction-Risk Triage (Classical ML + RNN + LLM explanation)
+# Hybrid Dissatisfaction-Risk Triage (Classical ML + fine-tuned DistilBERT + LLM explanation)
 
 A triage pipeline that reads customer feedback, estimates how dissatisfied the customer is (low / medium / high), routes it to **auto-reply, manual review or escalation**, and explains the decision in plain language.
 
 ## What this is, and is not
 
-- **It is** a worked example of a hybrid system: two trained text models, a calibrated probability-based decision layer, deterministic review rules, and a local LLM (Ollama) that explains but cannot decide.
+- **It is** a worked example of a hybrid system: a classical model plus a fine-tuned transformer, a calibrated probability-based decision layer, deterministic review rules, and a local LLM (Ollama) that explains but cannot decide.
 - **It is not** an escalation predictor. The dataset ([Women's E-Commerce Clothing Reviews](Womens%20Clothing%20E-Commerce%20Reviews.csv)) holds product *reviews*, not complaints, and has no escalation outcomes. The label is a **proxy** derived from star rating: 1-2 stars = `high`, 3 = `medium`, 4-5 = `low`. All metrics measure recovery of that rating-derived tier. Treat "risk" as "dissatisfaction", and validate against real escalation data before any real-world use. (Variable names such as `risk_level` are kept for continuity.)
 
 ## Architecture
@@ -14,45 +14,49 @@ A triage pipeline that reads customer feedback, estimates how dissatisfied the c
                 │
      ┌──────────┴──────────┐
      ▼                     ▼
- Classical model        RNN / LSTM          each -> [P(low), P(medium), P(high)]
- (TF-IDF + tabular      (text only)
+ Classical model       Fine-tuned DistilBERT     each -> [P(low), P(medium), P(high)]
+ (TF-IDF + tabular     (text only, int8 weights)
   LogReg)
      │  temperature calibration (fit on validation)
      └──────────┬──────────┘
                 ▼
-   p = 0.7*classical + 0.3*rnn            (weight = min validation log-loss)
+   p = 0.1*classical + 0.9*transformer     (weight = min validation log-loss)
                 ▼
-   high   if P(high) >= t_high            (thresholds tuned on validation
-   medium elif P(high)+P(medium) >= t_med   for high-class recall >= 0.70)
+   high   if P(high) >= t_high             (thresholds tuned on validation
+   medium elif P(high)+P(medium) >= t_med    for high-class recall >= 0.70)
    low    otherwise
                 ▼
-   review triggers: conflicted evidence, low confidence, model disagreement, very short text
+   review triggers: model disagreement, low confidence, conflicted evidence, very short text
                 ▼
    action: escalate_immediately | manual_review | auto_reply   (deterministic)
                 ▼
-   local LLM (Ollama, llama3.2) explanation  -- cannot change level, action or review flag;
+   LLM explanation (Ollama llama3.2 locally, or Bedrock)  -- cannot change level, action or review flag;
    output is rejected -> fallback if empty, contradictory or quoting invented numbers
 ```
 
-### Why the CNN is not in the decision
+### Why not the CNN or the LSTM?
 
-The original design gave a CNN 30% of the score. It was trained on 28x28 Fashion-MNIST clothing categories, so it cannot judge a real complaint photo, and with no image it returned a constant (0.4, or 0.6 if an image was flagged). That constant carried zero information, merely attaching a photo moved the score by 0.06, it made "high" almost unreachable (high recall was **13%**), and it made the disagreement rule fire on ~81% of cases. The CNN is now excluded; [`train_cnn_model.py`](train_cnn_model.py) remains only as a documented demo of the architecture. A real image signal needs outcome-labelled complaint photos, which this dataset does not have.
+**CNN.** The original design gave a CNN 30% of the score. It was trained on 28x28 Fashion-MNIST categories, so it cannot judge a real complaint photo, and with no image it returned a constant (0.4, or 0.6 if an image was flagged). That constant carried zero information, made "high" almost unreachable (high recall **13%**) and made the disagreement rule fire on ~81% of cases. It is excluded. No public dataset pairs complaint photos with outcome labels (only factory fabric-defect sets), so there is no honest way to build a real image signal here; it would need outcome-labelled photos from a real support system.
+
+**LSTM.** Once a fine-tuned DistilBERT existed, the validation-optimal blend weight for the LSTM was 0, so it was dropped from the decision (it stays as a reported baseline in `baselines.py`). That also removed TensorFlow from serving and shrank the container from ~1.7 GB to ~550 MB.
 
 ## Results (test split, n = 3,397)
 
-Full tables and caveats: [evaluation_report.md](evaluation_report.md).
+Full tables, confidence intervals and subgroups: [evaluation_report.md](evaluation_report.md).
 
-| | Old hybrid | New hybrid |
+| | v1 (original) | v3 (current) |
 |---|---|---|
-| Recall on high | 0.13 | **0.73** |
-| Macro-F1 | 0.54 | **0.62** |
-| Cases forced to human review | 81% | **30%** |
-| Truly-high cases that reach a human | n/a | 339 / 355 |
+| Recall on high | 0.13 | **0.71** |
+| Precision on high | 0.68 | 0.58 |
+| Macro-F1 | 0.54 | **0.67** (95% CI 0.65-0.69) |
+| Truly-high cases auto-replied | 29 | **5** of 355 |
+| Cases forced to human review | 81% | **29%** |
 
-- Hybrid vs classical alone: only +0.003 macro-F1 / +0.003 AUC (within noise); the RNN adds a small signal.
-- High precision is 0.50: about half of "high" flags are false alarms, by design (recall-first).
-- Removing the leaky `Recommended IND` feature explains why headline metrics are lower than the first version's (0.845 / 0.666): that gap was ~0.05 macro-F1 of label leakage.
-- The LLM layer (llama3.2 via Ollama) was evaluated live on 45 test rows plus an injection suite: 100% schema-valid, 100% policy-compliant, 0 injection successes. 18% of raw responses were rejected by the validators (empty, contradicting the decision, or quoting invented numbers) and replaced by a fallback. See the report.
+- The gain comes from the fine-tuned transformer. The blend with the classical model adds only +0.002 to +0.012 macro-F1.
+- About 4 in 10 "high" flags are false alarms, by design (recall-first).
+- Removing the leaky `Recommended IND` feature explains why the classical model's numbers are lower than the first version's: that gap was ~0.05 macro-F1 of label leakage.
+- Subgroup performance is fairly even across age bands; "Bottoms" has the lowest high recall (0.60). Details in the report.
+- LLM layer evaluated live on 45 rows plus injection strings: 100% policy-compliant after validators, 0 injection successes, but ~20% of raw llama3.2 responses are rejected and replaced by a fallback.
 
 ## Decision rules
 
@@ -65,26 +69,29 @@ Python 3.11.
 ```bash
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt     # requirements.txt alone is enough to serve
-ollama pull llama3.2                    # the explanation LLM (needs `ollama serve` running)
-cp .env.example .env                    # optional: OLLAMA_HOST / OLLAMA_MODEL / API_KEY
+ollama pull llama3.2                    # explanation LLM (needs `ollama serve`); or set LLM_PROVIDER=bedrock
+cp .env.example .env                    # optional settings (see file); export them or use your shell
 ```
 
-If Ollama is not running everything still works; explanations come from a local fallback and are labelled `_meta.explanation_source = "fallback"`.
+If the LLM is unreachable everything still works; explanations come from a local fallback and are labelled `_meta.explanation_source = "fallback"`.
 
 ## Usage
 
 ```bash
 python make_splits.py            # train/val/test CSVs from the raw dataset (needed for training/eval)
 python train_classical_model.py
-python train_rnn_model.py
+python train_transformer_model.py   # ~20 min on a laptop; then: python compact_transformer.py
 python tune_decision.py          # calibration + blend weight + thresholds, from validation only
-python evaluate_hybrid.py        # test-split evaluation -> evaluation_results.json
+python evaluate_hybrid.py        # test evaluation -> evaluation_results.json, monitoring_baseline.json
+python evaluate_robustness.py    # bootstrap CIs, CV, subgroups, ordinal experiment
 python hybrid_inference.py       # run the bundled samples
 python generate_sample_outputs.py
-python evaluate_llm.py --n 45    # needs Ollama running
+python evaluate_llm.py --n 45    # needs the LLM provider reachable
 python -m pytest                 # unit tests + end-to-end smoke tests
-uvicorn app:app --reload         # HTTP API
+uvicorn app:app --reload         # HTTP API  (GET /stats = drift monitor)
 ```
+
+The fp32 fine-tuned weights (`transformer_model/`, ~268 MB) are git-ignored; the int8 copy in `transformer_assets/` (60 MB) is what is committed and served.
 
 ```bash
 curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" \
@@ -94,7 +101,7 @@ curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" \
        "class_name":"Dresses"}'
 ```
 
-Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 hybrid-risk-api`. The rebuilt image was built and smoke-tested locally (health, API-key auth, a prediction); it has not been redeployed to AWS.
+Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 hybrid-risk-api`. Built and smoke-tested locally (health, API-key auth, prediction, LLM explanation, `/stats`). The AWS deployment attempt is documented in [aws_deployment_notes.md](aws_deployment_notes.md).
 
 ## Repository map
 
@@ -103,7 +110,10 @@ Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e
 | `risk_common.py` | constants, label proxy, probability ordering |
 | `decision.py`, `decision_config.json` | pure decision logic and its tuned parameters |
 | `hybrid_inference.py` | model loading, end-to-end `predict_hybrid` |
-| `llm_explainer.py` | Ollama explanation with sanitising, timeout, policy re-imposition, output validators, fallback |
+| `compact_transformer.py`, `transformer_assets/` | int8 DistilBERT weights + loader; `train_transformer_model.py` fine-tunes it |
+| `llm_explainer.py` | Ollama / Bedrock explanation with sanitising, timeout, policy re-imposition, output validators, fallback |
+| `monitoring.py` | rolling-window drift monitor behind `GET /stats` |
+| `baselines.py`, `train_rnn_model.py`, `train_cnn_model.py` | LSTM baseline and CNN demo; not in the decision |
 | `app.py` | FastAPI wrapper (validation, optional API key, no internal error leakage) |
 | `make_splits.py`, `train_*.py`, `tune_decision.py`, `evaluate_*.py` | reproducible pipeline |
 | `tests/`, `.github/workflows/ci.yml` | tests and CI |
@@ -114,6 +124,8 @@ Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e
 ## Known gaps
 
 - Proxy label, unvalidated against real escalations (the main limitation).
-- Medium class is weak (F1 ~0.35); one random split, no confidence intervals.
-- llama3.2 (3B) writes weak explanations about 1 time in 5 (rejected and replaced by the fallback); faithfulness beyond numbers and risk level has not been human-graded. AWS deployment not redone after the redesign (the image builds and serves locally), and App Runner cannot reach a local Ollama; see the AWS notes.
-- No drift monitoring, no built-in rate limiting.
+- Medium class is the weakest (F1 0.44); high precision 0.58.
+- One random split and one transformer training run; no test on real support tickets.
+- llama3.2 (3B) explanations: ~20% rejected by validators; faithfulness beyond numbers/risk level not human-graded.
+- Monitoring is in-process per instance, not fleet-wide; no built-in rate limiting.
+- AWS App Runner deployment failed at service creation (see AWS notes); not currently deployed.
