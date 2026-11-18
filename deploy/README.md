@@ -30,6 +30,8 @@ curl -X POST $URL/predict -H "X-API-Key: $KEY" -H "Content-Type: application/jso
 
 ## Option B (recommended): keyless deploy from GitHub Actions
 
+**Status:** steps 1 and 2 are done for this account/repo (stack `hybrid-risk-github-oidc`, role `hybrid-risk-github-deploy`, repository variable `AWS_DEPLOY_ROLE_ARN`, GitHub environment `production` with the owner as required reviewer and deployments restricted to `main`). The workflow has not been run yet: it needs the code merged to `main`.
+
 1. Once, from your own admin identity (not root keys):
    `aws cloudformation deploy --stack-name hybrid-risk-github-oidc --template-file deploy/github-oidc.yaml --capabilities CAPABILITY_NAMED_IAM`
    (pass `CreateOidcProvider=false ExistingOidcProviderArn=<arn>` if the account already has the GitHub OIDC provider). It creates a role that only this repository's `production` environment can assume and that can only manage the `hybrid-risk-api` stack.
