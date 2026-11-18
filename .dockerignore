@@ -25,6 +25,7 @@ evaluation_results.json
 model_manifest.json
 requirements-dev.txt
 .github
+deploy/
 pytest.ini
 baselines.py
 rnn_model.keras

@@ -101,7 +101,7 @@ curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" \
        "class_name":"Dresses"}'
 ```
 
-Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 hybrid-risk-api`. Built and smoke-tested locally (health, API-key auth, prediction, LLM explanation, `/stats`). The AWS deployment attempt is documented in [aws_deployment_notes.md](aws_deployment_notes.md).
+Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 hybrid-risk-api`. Built and smoke-tested locally (health, API-key auth, prediction, LLM explanation, `/stats`). AWS deployment (ECS Fargate + ALB + Bedrock, one CloudFormation stack) is in [deploy/README.md](deploy/README.md); it was deployed and verified live, see [aws_deployment_notes.md](aws_deployment_notes.md).
 
 ## Repository map
 
@@ -119,7 +119,8 @@ Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e
 | `tests/`, `.github/workflows/ci.yml` | tests and CI |
 | `evaluation_report.md`, `decision_policy.md`, `mini_model_card.md` | documentation |
 | `model_manifest.json`, `requirements*.txt` | pinned versions and rebuild steps |
-| `aws_deployment_notes.md` | record of an earlier AWS deployment (see its banner) |
+| `deploy/` | CloudFormation stack and instructions for ECS Fargate + ALB + Bedrock |
+| `aws_deployment_notes.md` | record of the first App Runner deployment, plus status of the current one |
 
 ## Known gaps
 
@@ -128,4 +129,4 @@ Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e
 - One random split and one transformer training run; no test on real support tickets.
 - llama3.2 (3B) explanations: ~20% rejected by validators; faithfulness beyond numbers/risk level not human-graded.
 - Monitoring is in-process per instance, not fleet-wide; no built-in rate limiting.
-- AWS App Runner deployment failed at service creation (see AWS notes); not currently deployed.
+- The AWS stack is HTTP only (no certificate), single task, and is currently left running (delete with `aws cloudformation delete-stack --stack-name hybrid-risk-api`).
