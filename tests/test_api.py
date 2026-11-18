@@ -14,7 +14,7 @@ FAKE_RESULT = {
                       "review_reasons": []},
     "llm_explanation": {"summary": "s", "recommended_action": "escalate_immediately", "reason": "r",
                         "human_review_required": True, "risk_notes": ["n"]},
-    "_meta": {"cnn_used": False, "explanation_source": "fallback"},
+    "_meta": {"explanation_source": "fallback"},
 }
 
 
@@ -33,7 +33,7 @@ def test_predict_ok_and_alias(client):
     r = client.post("/predict", json=VALID)
     assert r.status_code == 200
     body = r.json()
-    assert body["_meta"]["cnn_used"] is False
+    assert body["_meta"]["explanation_source"] == "fallback"
     assert body["model_outputs"]["risk_level"] == "high"
 
 

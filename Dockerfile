@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy only what inference needs: the modules hybrid_inference.py imports
 # (risk_common, decision, llm_explainer, compact_transformer, monitoring) and the trained artifacts + tuned
-# decision config. The LSTM/CNN baselines, raw CSVs and notebooks are left out.
+# decision config. The LSTM baseline, raw CSVs and notebooks are left out.
 COPY risk_common.py decision.py llm_explainer.py compact_transformer.py monitoring.py hybrid_inference.py app.py ./
 COPY classical_model.pkl decision_config.json monitoring_baseline.json ./
 COPY transformer_assets/ ./transformer_assets/

@@ -27,7 +27,7 @@ def test_output_contract_and_probabilities_sum_to_one():
     mo = out["model_outputs"]
     assert mo["risk_level"] in ("low", "medium", "high")
     assert sum(mo["probabilities"].values()) == pytest.approx(1.0, abs=0.01)
-    assert out["_meta"]["cnn_used"] is False
+    assert "cnn_used" not in out["_meta"]
     assert out["llm_explanation"] is None
 
 

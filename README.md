@@ -416,7 +416,7 @@ curl -X POST $URL/predict -H "X-API-Key: $KEY" -H "Content-Type: application/jso
     "summary": "...", "reason": "...", "risk_notes": ["..."],
     "recommended_action": "escalate_immediately", "human_review_required": true
   },
-  "_meta": {"cnn_used": false, "explanation_source": "llm"}
+  "_meta": {"explanation_source": "llm"}
 }
 ```
 
@@ -444,7 +444,7 @@ The dependency direction is one-way: `app` to `hybrid_inference` to (`decision`,
 - **`monitoring.py`** and **`monitoring_baseline.json`**: rolling in-process drift monitor and the **CloudWatch** metric lines.
 - **`make_splits.py`**, **`train_classical_model.py`**, **`train_transformer_model.py`**, **`tune_decision.py`**: the reproducible training and tuning path.
 - **`evaluate_hybrid.py`**, **`evaluate_robustness.py`**, **`evaluate_llm.py`**, **`generate_sample_outputs.py`**: evaluation and the worked examples ([`sample_inputs.json`](sample_inputs.json), [`sample_outputs.json`](sample_outputs.json)).
-- **`baselines.py`**, **`train_rnn_model.py`**, **`train_cnn_model.py`**: the **LSTM** baseline and a **Fashion-MNIST** **CNN** demo, kept for comparison but not part of the decision.
+- **`baselines.py`** and **`train_rnn_model.py`**: the **LSTM** baseline, kept for the comparison in the results but not part of the decision.
 - **`tests/`**: 68 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
 - **`deploy/`** and **`.github/workflows/`**: the **CloudFormation** stacks (`ecs-fargate.yaml`, `github-oidc.yaml`), CI and the deploy workflow.
 - **`docs/`**: the diagrams, figures and badges as code ([`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py), [`make_badges.py`](docs/diagrams/make_badges.py); they need `pip install diagrams` and **Graphviz**), so they stay in step with the system.
@@ -460,7 +460,7 @@ The dependency direction is one-way: `app` to `hybrid_inference` to (`decision`,
 | Decide on probabilities, not one score | A 50/50 split between low and high is different from a confident medium; an averaged score cannot tell them apart. Conflicting evidence now has its own review trigger |
 | Fine-tuned **DistilBERT** as the main model | Frozen sentence embeddings were worse than **TF-IDF**; **fine-tuning** lifted **macro-F1** from 0.59 to 0.67 |
 | **LSTM** dropped | Its optimal blend weight was zero once **DistilBERT** existed; removing it also removed TensorFlow from serving and cut the image from about 1.7 GB to 550 MB |
-| No image model in the decision | An earlier **CNN** trained on **Fashion-MNIST** could not read complaint photos and, with no photo, contributed a constant that hid most high-tier cases (**recall** 0.13). No public dataset pairs complaint photos with outcomes. `train_cnn_model.py` stays as a demo; a real image signal needs outcome-labelled photos |
+| No image model in the decision | An earlier **CNN** trained on **Fashion-MNIST** could not read complaint photos and, with no photo, contributed a constant that hid most high-tier cases (**recall** 0.13). No public dataset pairs complaint photos with outcomes. The model and its code were removed; a real image signal needs outcome-labelled photos |
 | Remove `Recommended IND` | It nearly encodes the rating, so it inflates scores without adding understanding |
 | Thresholds tuned for **recall** on "high" | Missing an unhappy customer costs more than a wasted review |
 | **LLM** explains, rules decide | A safety-relevant flag should never depend on a model following instructions |

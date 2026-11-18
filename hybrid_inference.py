@@ -8,10 +8,7 @@ Their calibrated class probabilities are blended and mapped to a risk level by
 decision.py using parameters tuned on the validation split (decision_config.json).
 The LLM (llm_explainer.py) only EXPLAINS the result; it cannot change it.
 
-The CNN is NOT part of the decision. It was trained on Fashion-MNIST, so it
-cannot judge a complaint photo, and feeding it a constant when no image exists
-only added noise (see README, "Why the CNN is not in the decision"). Any
-`image` / `image_available` fields in the payload are ignored.
+Only the image-free text path exists: `image` / `image_available` fields in a payload are ignored.
 
 --------------------------------------------------------------------------
 Input schema (mirrors the Women's E-Commerce Clothing Reviews columns)
@@ -132,7 +129,7 @@ def predict_hybrid(input_data, explain=True):
     return {
         "model_outputs": model_outputs,
         "llm_explanation": explanation,
-        "_meta": {"cnn_used": False, "explanation_source": source},
+        "_meta": {"explanation_source": source},
     }
 
 

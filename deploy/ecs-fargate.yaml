@@ -9,7 +9,7 @@ Description: >
 Parameters:
   ImageUri:
     Type: String
-    Description: ECR image, e.g. 767397972889.dkr.ecr.us-east-1.amazonaws.com/hybrid-risk-api:v2
+    Description: ECR image, e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/hybrid-risk-api:v2
   VpcId:
     Type: AWS::EC2::VPC::Id
   SubnetIds:

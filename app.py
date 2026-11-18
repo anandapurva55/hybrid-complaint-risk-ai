@@ -74,7 +74,6 @@ class LlmExplanation(BaseModel):
 
 
 class Meta(BaseModel):
-    cnn_used: bool
     explanation_source: Optional[str] = None
 
 

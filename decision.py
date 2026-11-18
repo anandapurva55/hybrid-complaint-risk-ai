@@ -16,7 +16,6 @@ Pipeline, all on class-probability vectors in CLASSES order (low, medium, high):
   4. flag for human review when the evidence is conflicted, low-confidence, or
      the two models disagree (see review_reasons)
 
-The CNN is intentionally absent: see README ("Why the CNN is not in the decision").
 """
 
 import json

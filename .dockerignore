@@ -14,8 +14,6 @@ sample_inputs.json
 sample_outputs.json
 train_classical_model.py
 train_rnn_model.py
-train_cnn_model.py
-cnn_model.keras
 make_splits.py
 tune_decision.py
 evaluate_hybrid.py

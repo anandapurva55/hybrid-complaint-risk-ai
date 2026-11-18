@@ -13,7 +13,7 @@ decision.py works on, because an expected-value score cannot tell a confident
 "medium" from a 50/50 split between "low" and "high".
 
 `proba_to_score` still provides a single 0-1 number for display and for the
-legacy CNN demo: score = 0.0*P(low) + 0.5*P(medium) + 1.0*P(high).
+display only: score = 0.0*P(low) + 0.5*P(medium) + 1.0*P(high).
 """
 
 import numpy as np
