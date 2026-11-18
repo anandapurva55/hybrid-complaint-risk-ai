@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="234" height="20" role="img" aria-label="CloudFront + WAF: HTTPS, rate limit">
+  <title>CloudFront + WAF: HTTPS, rate limit</title>
+  <clipPath id="r"><rect width="234" height="20" rx="3"/></clipPath>
+  <g clip-path="url(#r)"><rect width="114" height="20" fill="#555"/><rect x="114" width="120" height="20" fill="#6B3FA0"/></g>
+  <g font-family="Verdana,DejaVu Sans,Geneva,sans-serif" font-size="11" fill="#fff" text-anchor="middle">
+    <text x="57.0" y="15" fill="#010101" fill-opacity=".3">CloudFront + WAF</text>
+    <text x="57.0" y="14">CloudFront + WAF</text>
+    <text x="174.0" y="15" fill="#010101" fill-opacity=".3">HTTPS, rate limit</text>
+    <text x="174.0" y="14">HTTPS, rate limit</text>
+  </g>
+</svg>

@@ -1,0 +1,3 @@
+diagrams
+pillow
+matplotlib
