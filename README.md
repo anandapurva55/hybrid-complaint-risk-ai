@@ -141,6 +141,31 @@ flowchart LR
 
 The **thresholds**, temperatures, blend weight and trigger limits live in [`decision_config.json`](decision_config.json) and are produced by [`tune_decision.py`](tune_decision.py) from the validation split only. The four **review triggers** are: the two models disagree (total-variation distance above 0.45), the top probability is below 0.45, low and high are both at least 0.30 likely, or the text is shorter than four words. Full policy: [decision_policy.md](decision_policy.md).
 
+### The calibrated decision layer, step by step
+
+All of this lives in [`decision.py`](decision.py), uses only **NumPy** and has no model code in it. Its numbers come from [`decision_config.json`](decision_config.json), which [`tune_decision.py`](tune_decision.py) writes using the validation split only.
+
+1. **Probabilities.** Each model outputs `[P(low), P(medium), P(high)]`: the **classical model** through `predict_proba`, **DistilBERT** through a softmax. The column order is fixed in one place (`reorder_proba`), because **scikit-learn** lists classes alphabetically.
+2. **Temperature calibration.** Raw model confidence is often too high or too low. For each model one number `T` rescales its probabilities as `p^(1/T)` and renormalises them. `T` is found by minimising **log-loss** on the validation split over a grid from 0.5 to 4.0. The result is `T = 0.9` for the **classical model** (slightly sharper) and `T = 1.15` for **DistilBERT** (slightly softer). Expected calibration error drops from 0.025 to 0.012 for **DistilBERT** and is 0.013 for the final blend. Class weights are deliberately not used in training, because they distort the probabilities that this layer depends on.
+3. **Blending.** `p = 0.1 * classical + 0.9 * transformer`. The weight is the one with the lowest validation **log-loss** over a grid from 0 to 1 (the **LSTM** baseline got weight 0, so it left the system).
+4. **Thresholds on probabilities, not on a score.** `P(high) >= 0.375` gives `high`; otherwise `P(high) + P(medium) >= 0.225` gives `medium`; otherwise `low`. The two **thresholds** come from a grid search on validation: keep only pairs that reach at least 70% **recall** on `high`, then take the best **macro-F1** (validation **recall** 0.70, **macro-F1** 0.68). Deciding on probabilities matters because an averaged score cannot tell a confident "medium" from a 50/50 split between "low" and "high"; that split is caught by a review trigger instead.
+
+### The deterministic review rules
+
+"Deterministic" means the same input always gives the same answer: plain rules and numbers, no randomness and no **LLM** involved. They decide **whether a person must look** and **what happens next**:
+
+| Rule | Condition | Effect |
+|---|---|---|
+| High tier | `P(high) >= 0.375` | `escalate_immediately`, human review |
+| Medium tier | medium decision | `manual_review`, human review |
+| `conflicted` | low and high are both at least 0.30 likely | review |
+| `low_confidence` | the top probability is below 0.45 | review |
+| `models_disagree` | the two calibrated probability vectors differ by more than 0.45 (total variation distance) | review |
+| `short_text` | fewer than 4 words | review |
+| Low tier, no trigger | none of the above | `auto_reply` |
+
+A "low" case that trips any trigger is never auto-replied: `action_for` turns it into `manual_review`. After the **LLM** writes its explanation, `recommended_action` and `human_review_required` are **overwritten** from these rules, and the **LLM** can only add caution, never remove it. On the test set the rules send 29.3% of feedback to a person (disagreement 5.7%, low confidence 3.5%, short text 0.2%, conflict 0.03%, plus every medium and high case), and only 5 of 355 truly unhappy customers would be auto-replied. [`tests/test_decision.py`](tests/test_decision.py) covers every boundary and trigger.
+
 ## Results
 
 Everything below is on the held-out test split (3,397 reviews) that was never used for training or tuning. Full tables, **bootstrap** intervals and subgroup results are in [evaluation_report.md](evaluation_report.md).
