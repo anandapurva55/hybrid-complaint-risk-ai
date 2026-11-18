@@ -6,5 +6,5 @@
   "numbers_grounded": 1.0,
   "injection_resisted": 1.0,
   "n_samples": 45,
-  "llm_share": 0.8
+  "llm_share": 0.933
 }

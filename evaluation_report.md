@@ -43,6 +43,9 @@ Per-class (hybrid): low P 0.974 / R 0.900; medium P 0.395 / R 0.507 (F1 0.444); 
 
 **Uncertainty (1,000 bootstrap resamples of the test set, 95% CI):** hybrid macro-F1 0.652-0.694; high recall 0.660-0.755; high precision 0.540-0.629. Hybrid minus transformer-alone macro-F1: +0.002 to +0.012. The blend helps, but only slightly (the CI excludes zero by a hair; the comparison is mildly favourable to the hybrid because the thresholds were tuned for it). The transformer is where the gain comes from. Classical model 5-fold CV on train+val: macro-F1 0.586 +/- 0.011, accuracy 0.827 +/- 0.005, so test results are not a lucky split for that model.
 
+### Training-seed variance (transformer)
+Three fine-tuning runs with different seeds ([`seed_runs/`](seed_runs/)): test macro-F1 at argmax 0.675 (shipped, seed 42), 0.666 (seed 1), 0.682 (seed 2); mean 0.674, spread about +/-0.008. High-vs-rest AUC 0.950 / 0.951 / 0.953. The transformer's advantage over the classical model (0.593) is many times larger than seed noise; the tiny hybrid-over-transformer gain (+0.002 to +0.012) is of the same order as seed noise, so treat it as unproven.
+
 ### History of the redesign (same test split)
 
 | | v1 (CNN fixed at 0.4, 0.45/0.75 thresholds) | v2 (probabilities, classical + LSTM) | v3 (current: classical + DistilBERT) |
@@ -110,15 +113,15 @@ Local llama3.2 (3B) through Ollama, or Amazon Bedrock (Nova Lite) when `LLM_PROV
 | Non-empty and consistent with the decided risk level | 100% |
 | Quoted numbers match `model_outputs` | 100% |
 | Injection suite: action unchanged | 3 / 3 |
-| Responses that came from the LLM (rest rejected -> fallback) | 80% |
+| Responses that came from the LLM (rest rejected twice -> fallback) | 93% |
 
-The 100% rows are *after* the validators in `llm_explainer.py` (empty, contradictory or numerically invented output is rejected), so they are guarantees by construction. The honest quality signal is the ~20% rejection rate: raw llama3.2 output wrote `reason: "Low risk"` for a high-risk case, returned empty fields, and invented figures such as "863% probability". Faithfulness beyond numbers and risk level (e.g. an invented product defect) is not checked automatically and has not been human-graded. n = 45 is small. The Bedrock path was smoke-tested once, not evaluated.
+The 100% rows are *after* the validators in `llm_explainer.py` (empty, contradictory or numerically invented output is rejected), so they are guarantees by construction. The honest quality signal is the rejection rate (20% on the first attempt, 6.7% after one automatic retry at a warmer temperature): raw llama3.2 output wrote `reason: "Low risk"` for a high-risk case, returned empty fields, and invented figures such as "863% probability". Faithfulness beyond numbers and risk level (e.g. an invented product defect) is not checked automatically and has not been human-graded. n = 45 is small. The Bedrock path was smoke-tested once, not evaluated.
 
 ## 7. Remaining limitations
 1. **Proxy label.** Largest limitation; only real escalation outcomes fix it. Reviews are also not support tickets.
 2. **High precision is 0.58:** ~4 in 10 "high" flags are false alarms, by design (recall-first).
 3. **Medium** is the weak class (F1 0.44), inherently ambiguous.
 4. **Single dataset, English, clothing.** No test on real support tickets.
-5. **Tuning and test share one random split;** the transformer has one training run (no seed variance estimate).
-6. **Drift monitoring is in-process only** (`/stats`, per container instance), not a fleet-wide system.
+5. **Tuning and test share one random split.** Seed variance is now measured for the transformer (above) but not for the classical model's split.
+6. **Monitoring:** `/stats` is per container, but every prediction also emits CloudWatch EMF metrics (review share, fallback share, auto-reply share, escalation share, mean confidence) with alarms, so fleet-wide drift signals exist when deployed on AWS. No automatic retraining or label feedback loop.
 7. **int8 weights:** measured accuracy cost is nil (macro-F1 0.6751 vs 0.6749 argmax), but only on this test set.

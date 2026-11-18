@@ -44,8 +44,8 @@ The transformer provides the gain; the blend with the classical model adds only 
 - Medium class is the weakest (F1 0.44).
 - About 4 in 10 "high" flags are false alarms by design (recall-first).
 - Reviews differ from support tickets in style and length.
-- Bootstrap CIs are reported, but there is one random split and one transformer training run.
-- llama3.2 (3B) explanations: ~18% of raw responses rejected by validators (n = 45); faithfulness beyond numbers/risk level not human-graded.
+- Bootstrap CIs and a 3-seed study of the transformer (macro-F1 0.666-0.682) are reported, but there is one random data split.
+- llama3.2 (3B) explanations: 6.7% end up as the local fallback after one retry (n = 45); faithfulness beyond numbers/risk level not human-graded.
 - Drift monitoring is in-process only (`GET /stats`); dependency versions are pinned and the pickled/Keras artifacts must be retrained if they change.
 - Fairness: subgroup metrics by age band and department are in the evaluation report (fairly even; Bottoms has lowest high recall, 0.60); no formal fairness test.
 

@@ -13,7 +13,9 @@ GET /stats in app.py. Contains no complaint text or customer identifiers.
 """
 import json
 import os
+import sys
 import threading
+import time
 from collections import deque
 
 WINDOW = 1000
@@ -28,6 +30,29 @@ def load_baseline(path=os.path.join(_HERE, "monitoring_baseline.json")):
             return json.load(f)
     except OSError:
         return {}
+
+
+def emit_metrics(row, stream=None):
+    """One CloudWatch Embedded Metric Format line per prediction (stdout -> awslogs).
+
+    Gives fleet-wide metrics and alarms without per-instance state: the Average of
+    ReviewRequired / FallbackExplanation (0 or 1 per request) is the share over any
+    period. No complaint text or identifiers are included."""
+    line = {
+        "_aws": {"Timestamp": int(time.time() * 1000), "CloudWatchMetrics": [{
+            "Namespace": "HybridRiskApi", "Dimensions": [["Service"]],
+            "Metrics": [{"Name": "Predictions", "Unit": "Count"},
+                        {"Name": "ReviewRequired", "Unit": "None"},
+                        {"Name": "FallbackExplanation", "Unit": "None"},
+                        {"Name": "AutoReply", "Unit": "None"},
+                        {"Name": "EscalatedHigh", "Unit": "None"},
+                        {"Name": "TopProbability", "Unit": "None"}]}]},
+        "Service": "hybrid-risk-api",
+        "Predictions": 1, "ReviewRequired": int(row["review"]), "FallbackExplanation": int(row["fallback"]),
+        "AutoReply": int(row["action"] == "auto_reply"), "EscalatedHigh": int(row["level"] == "high"),
+        "TopProbability": round(row["top_p"], 4),
+    }
+    print(json.dumps(line), file=stream or sys.stdout, flush=True)
 
 
 class Monitor:
@@ -47,6 +72,7 @@ class Monitor:
         }
         with self._lock:
             self._rows.append(row)
+        emit_metrics(row)
 
     def snapshot(self):
         with self._lock:

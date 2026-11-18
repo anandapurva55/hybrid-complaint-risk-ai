@@ -16,8 +16,9 @@ class FakeLLM:
     def __init__(self, text=None, exc=None):
         self.text, self.exc, self.prompt = text, exc, None
 
-    def __call__(self, prompt):
+    def __call__(self, prompt, temperature=0.0):
         self.prompt = prompt
+        self.temps = getattr(self, "temps", []) + [temperature]
         if self.exc:
             raise self.exc
         return self.text
@@ -138,3 +139,37 @@ def test_provider_none_uses_fallback(monkeypatch):
     monkeypatch.setattr(le, "LLM_PROVIDER", "none")
     out = le.explain_decision({"complaint_text": "x", "model_outputs": HIGH})
     assert out["_source"] == "fallback"
+
+
+class Sequence:
+    """Returns successive canned responses, like a model whose second answer is better."""
+
+    def __init__(self, *texts):
+        self.texts, self.calls = list(texts), 0
+
+    def __call__(self, prompt, temperature=0.0):
+        self.calls += 1
+        return self.texts.pop(0)
+
+
+def test_rejected_first_answer_gets_one_retry(monkeypatch):
+    seq = use_client(monkeypatch, Sequence(good(reason="Low risk"), good()))
+    out = le.explain_decision({"complaint_text": "x", "model_outputs": HIGH})
+    assert out["_source"] == "llm" and seq.calls == 2
+
+
+def test_two_bad_answers_fall_back(monkeypatch):
+    seq = use_client(monkeypatch, Sequence(good(reason=""), "not json"))
+    out = le.explain_decision({"complaint_text": "x", "model_outputs": HIGH})
+    assert out["_source"] == "fallback" and seq.calls == 2
+
+
+def test_provider_outage_does_not_retry(monkeypatch):
+    calls = []
+
+    def down(prompt, temperature=0.0):
+        calls.append(1)
+        raise TimeoutError("down")
+    monkeypatch.setattr(le, "_generate", down)
+    assert le.explain_decision({"complaint_text": "x", "model_outputs": HIGH})["_source"] == "fallback"
+    assert len(calls) == 1

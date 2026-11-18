@@ -3,8 +3,8 @@ Description: >
   Hybrid dissatisfaction-risk API on ECS Fargate behind an Application Load Balancer.
   The LLM explanation uses Amazon Bedrock (Nova Lite) through the task role; the API key
   is generated at deploy time in Secrets Manager (never in the repository).
-  Deploy with a NON-ROOT identity (see deploy/README.md): ECS/App Runner reject role
-  passes made with root credentials.
+  Direct ecs/apprunner CLI calls with root keys reject role passes; deploying through this stack
+  works, and a non-root identity (e.g. GitHub OIDC, see github-oidc.yaml) is preferred.
 
 Parameters:
   ImageUri:
@@ -21,6 +21,24 @@ Parameters:
   DesiredCount:
     Type: Number
     Default: 1
+  MaxCount:
+    Type: Number
+    Default: 3
+  CloudFrontPrefixListId:
+    Type: String
+    Default: pl-3b927c52
+    Description: AWS-managed prefix list com.amazonaws.global.cloudfront.origin-facing for the region
+  RateLimitPer5Min:
+    Type: Number
+    Default: 300
+    Description: Requests per source IP per 5 minutes before WAF blocks
+  AlarmEmail:
+    Type: String
+    Default: ""
+    Description: Optional. Email for CloudWatch alarm notifications (needs confirming the subscription)
+
+Conditions:
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
 
 Resources:
   ApiKeySecret:
@@ -79,10 +97,10 @@ Resources:
   AlbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Public HTTP to the load balancer
+      GroupDescription: Only CloudFront (origin-facing prefix list) may reach the load balancer
       VpcId: !Ref VpcId
       SecurityGroupIngress:
-        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, SourcePrefixListId: !Ref CloudFrontPrefixListId }
 
   TaskSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -177,8 +195,139 @@ Resources:
       LoadBalancers:
         - { ContainerName: api, ContainerPort: 8000, TargetGroupArn: !Ref TargetGroup }
 
+  # ---------------- HTTPS edge, rate limiting ----------------
+  RateLimitAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Scope: CLOUDFRONT          # CLOUDFRONT web ACLs must be created in us-east-1
+      DefaultAction: { Allow: {} }
+      VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: hybrid-risk-acl }
+      Rules:
+        - Name: rate-limit-per-ip
+          Priority: 0
+          Action: { Block: {} }
+          Statement:
+            RateBasedStatement: { Limit: !Ref RateLimitPer5Min, AggregateKeyType: IP }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: hybrid-risk-rate-limit }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: HTTPS front door for the hybrid risk API
+        HttpVersion: http2
+        WebACLId: !GetAtt RateLimitAcl.Arn
+        Origins:
+          - Id: alb
+            DomainName: !GetAtt LoadBalancer.DNSName
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: alb
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad            # CachingDisabled
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac    # AllViewerExceptHostHeader (forwards X-API-Key)
+
+  # ---------------- autoscaling ----------------
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      ResourceId: !Sub service/${Cluster}/${Service.Name}
+      MinCapacity: !Ref DesiredCount
+      MaxCapacity: !Ref MaxCount
+
+  CpuScaling:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: cpu-60
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 60
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification: { PredefinedMetricType: ECSServiceAverageCPUUtilization }
+
+  # ---------------- alarms ----------------
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmEmail
+    Properties:
+      Subscription: [{ Protocol: email, Endpoint: !Ref AlarmEmail }]
+
+  Alb5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Server errors from the API
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions: [{ Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref AlarmTopic], !Ref "AWS::NoValue"]
+
+  UnhealthyHostsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: A task failed its health check
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - { Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }
+        - { Name: TargetGroup, Value: !GetAtt TargetGroup.TargetGroupFullName }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref AlarmTopic], !Ref "AWS::NoValue"]
+
+  FallbackShareAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: More than 40% of explanations fell back (LLM unhealthy or its output being rejected). Metric comes from the app's EMF logs.
+      Namespace: HybridRiskApi
+      MetricName: FallbackExplanation
+      Dimensions: [{ Name: Service, Value: hybrid-risk-api }]
+      Statistic: Average
+      Period: 900
+      EvaluationPeriods: 2
+      Threshold: 0.4
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref AlarmTopic], !Ref "AWS::NoValue"]
+
+  ReviewShareDriftAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Human-review share far above the ~29% test baseline (input drift or model problem)
+      Namespace: HybridRiskApi
+      MetricName: ReviewRequired
+      Dimensions: [{ Name: Service, Value: hybrid-risk-api }]
+      Statistic: Average
+      Period: 3600
+      EvaluationPeriods: 2
+      Threshold: 0.5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref AlarmTopic], !Ref "AWS::NoValue"]
+
 Outputs:
   ApiUrl:
+    Description: HTTPS endpoint (CloudFront default certificate)
+    Value: !Sub https://${Distribution.DomainName}
+  AlbUrlNotPublic:
+    Description: The ALB only accepts CloudFront traffic; use ApiUrl
     Value: !Sub http://${LoadBalancer.DNSName}
   ApiKeySecretArn:
     Value: !Ref ApiKeySecret

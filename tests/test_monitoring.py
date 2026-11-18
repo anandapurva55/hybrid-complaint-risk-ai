@@ -1,3 +1,5 @@
+import json
+
 from monitoring import Monitor
 
 
@@ -37,3 +39,14 @@ def test_window_is_bounded():
     for _ in range(20):
         m.record(result())
     assert m.snapshot()["n"] == 5
+
+
+def test_emf_line_is_valid_and_free_of_text():
+    import io
+    from monitoring import emit_metrics
+    buf = io.StringIO()
+    emit_metrics({"level": "high", "action": "escalate_immediately", "review": True, "top_p": 0.8, "fallback": False}, buf)
+    line = json.loads(buf.getvalue())
+    declared = {m["Name"] for m in line["_aws"]["CloudWatchMetrics"][0]["Metrics"]}
+    assert declared <= set(line)            # every declared metric has a value
+    assert line["EscalatedHigh"] == 1 and line["ReviewRequired"] == 1 and line["FallbackExplanation"] == 0

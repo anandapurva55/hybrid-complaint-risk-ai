@@ -1,37 +1,53 @@
-# Deploying to AWS (ECS Fargate + ALB, Bedrock explanations)
+# Deploying to AWS
 
-[`ecs-fargate.yaml`](ecs-fargate.yaml) is a CloudFormation stack: ECS cluster and Fargate service (2 vCPU / 4 GB), an Application Load Balancer, least-privilege roles (the task role may invoke only the one Bedrock model), a 7-day log group, and an API key **generated in Secrets Manager at deploy time**.
+One CloudFormation stack, [`ecs-fargate.yaml`](ecs-fargate.yaml):
 
-```bash
-# 1. Push the image (amd64) to ECR
-aws ecr create-repository --repository-name hybrid-risk-api
-aws ecr get-login-password | docker login --username AWS --password-stdin <acct>.dkr.ecr.<region>.amazonaws.com
-docker buildx build --platform linux/amd64 -t <acct>.dkr.ecr.<region>.amazonaws.com/hybrid-risk-api:v2 --push .
-
-# 2. Deploy the stack (default VPC shown; use two public subnets in different AZs)
-aws cloudformation deploy --stack-name hybrid-risk-api --template-file deploy/ecs-fargate.yaml \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides ImageUri=<image uri> VpcId=<vpc-id> SubnetIds=<subnet-a>,<subnet-b>
-
-# 3. Use it
-URL=$(aws cloudformation describe-stacks --stack-name hybrid-risk-api --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' --output text)
-KEY=$(aws secretsmanager get-secret-value --secret-id <ApiKeySecretArn output> --query SecretString --output text)
-curl -X POST $URL/predict -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d @one_sample.json
-
-# 4. Tear down (removes everything the stack created)
-aws cloudformation delete-stack --stack-name hybrid-risk-api
+```
+client --HTTPS--> CloudFront (+ WAF rate limit per IP) --HTTP--> ALB (accepts only CloudFront's IP ranges)
+                                                                   --> ECS Fargate (2 vCPU / 4 GB, autoscaling 1..3 on CPU)
+                                                                          |-- Bedrock (Nova Lite) via the task role (that one model only)
+                                                                          `-- API key from Secrets Manager (generated at deploy time)
 ```
 
-Requirements: Bedrock access to `amazon.nova-lite-v1:0` (via the `us.` inference profile) in the region.
+Also created: CloudWatch log group (7-day retention) and alarms (5xx, unhealthy task, fallback-explanation share > 40%, human-review share > 50%; optional email via `AlarmEmail`). The app emits CloudWatch EMF metrics per prediction (no complaint text).
 
-## Why not App Runner, and why not direct `aws ecs`/`apprunner` calls
+## Option A: deploy by hand
 
-Two separate problems were found when redeploying this account:
+```bash
+aws ecr create-repository --repository-name hybrid-risk-api
+aws ecr get-login-password | docker login --username AWS --password-stdin <acct>.dkr.ecr.<region>.amazonaws.com
+docker buildx build --platform linux/amd64 -t <acct>.dkr.ecr.<region>.amazonaws.com/hybrid-risk-api:v3 --push .
 
-1. **App Runner** refuses new services for this account: `Account ... can't create new App Runner services` (visible once no role is passed; the "not authorized to pass this role" message that appears otherwise is misleading). This is an AWS-side account restriction, so the stack uses ECS instead.
-2. **Role passing from the root user fails.** Direct `ecs register-task-definition` / `apprunner create-service` calls made with root access keys reject *any* role (`Role is not valid`), while the same call without a role works. CloudFormation passes the roles itself, so deploying through the stack works even from root credentials. Better practice (and what the sibling claims project uses): deploy from an IAM role or SSO identity, e.g. GitHub Actions with OIDC, and avoid root access keys altogether.
+aws cloudformation deploy --stack-name hybrid-risk-api --template-file deploy/ecs-fargate.yaml \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides ImageUri=<image uri> VpcId=<vpc-id> SubnetIds=<subnet-a>,<subnet-b> [AlarmEmail=you@example.com]
+
+URL=$(aws cloudformation describe-stacks --stack-name hybrid-risk-api --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' --output text)
+SEC=$(aws secretsmanager list-secrets --query 'SecretList[?contains(Name,`ApiKeySecret`)].ARN|[0]' --output text)
+KEY=$(aws secretsmanager get-secret-value --secret-id $SEC --query SecretString --output text)
+curl -X POST $URL/predict -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d @one_sample.json
+```
+
+## Option B (recommended): keyless deploy from GitHub Actions
+
+1. Once, from your own admin identity (not root keys):
+   `aws cloudformation deploy --stack-name hybrid-risk-github-oidc --template-file deploy/github-oidc.yaml --capabilities CAPABILITY_NAMED_IAM`
+   (pass `CreateOidcProvider=false ExistingOidcProviderArn=<arn>` if the account already has the GitHub OIDC provider). It creates a role that only this repository's `production` environment can assume and that can only manage the `hybrid-risk-api` stack.
+2. In the GitHub repo: add the output as the variable `AWS_DEPLOY_ROLE_ARN`, create the `production` environment with required reviewers.
+3. Run the **Deploy to AWS** workflow ([`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)): tests + `cfn-lint` gate it, then it builds the amd64 image, deploys the stack and smoke-tests the URL.
+
+## Tear down
+`aws cloudformation delete-stack --stack-name hybrid-risk-api` (the ECR repo and, for Option B, the OIDC stack are separate).
+
+## Why a stack instead of direct CLI calls, and why not App Runner
+1. **App Runner** refuses new services for this account: `Account ... can't create new App Runner services` (visible once no role is passed; the "not authorized to pass this role" message that appears otherwise is misleading). An AWS-side account restriction, so ECS is used.
+2. **Root credentials cannot pass roles.** Direct `ecs register-task-definition` / `apprunner create-service` calls made with root access keys reject *any* role (`Role is not valid`), while the same call without a role works. CloudFormation passes the roles itself, so the stack deploys even from root; Option B avoids root altogether.
+
+## Verified on the live deployment (2026-11-19)
+HTTPS 200 on the CloudFront URL; plain HTTP redirects (301); the ALB's own address is unreachable directly; `/predict` without the key returns 401; a real prediction returns a decision plus a Bedrock-written explanation; EMF metrics appear in the log group; WAF blocked one IP after ~600 requests in about 2 minutes (the rate limit is evaluated with a short lag).
 
 ## Limitations
-- HTTP only (the ALB has no certificate). Put it behind CloudFront/ACM or add an HTTPS listener with your own domain before sending real data; the API key travels in a header.
-- Single task, no autoscaling; `/stats` monitoring is per task.
-- A running stack costs roughly $1.5-3/day (ALB plus 2 vCPU/4 GB Fargate); delete it when idle.
+- `*.cloudfront.net` certificate only; a custom domain needs your own ACM certificate (us-east-1) and an alias on the distribution.
+- The WAF rule limits per source IP only; the managed rule groups (SQLi, bots) are not enabled.
+- Autoscaling is CPU-based; `/stats` stays per task, the EMF metrics are the fleet view.
+- A running stack costs roughly $3-6/day (ALB, Fargate, CloudFront/WAF requests); delete it when idle.

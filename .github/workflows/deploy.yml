@@ -1,0 +1,52 @@
+name: Deploy to AWS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC: no stored AWS keys
+  contents: read
+
+concurrency: deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production        # add required reviewers on this GitHub Environment
+    env:
+      AWS_REGION: us-east-1
+      STACK: hybrid-risk-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: requirements.txt }
+      - name: Tests (gate the deploy)
+        run: |
+          pip install -r requirements.txt pytest==9.2.0 httpx==0.28.1 cfn-lint
+          python -m pytest -q
+          cfn-lint deploy/*.yaml
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push the image (amd64)
+        run: |
+          aws ecr describe-repositories --repository-names hybrid-risk-api >/dev/null 2>&1 || aws ecr create-repository --repository-name hybrid-risk-api --image-scanning-configuration scanOnPush=true
+          IMAGE=${{ steps.ecr.outputs.registry }}/hybrid-risk-api:${{ github.sha }}
+          docker buildx build --platform linux/amd64 -t "$IMAGE" --push .
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Deploy the stack
+        run: |
+          VPC=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text)
+          SUBNETS=$(aws ec2 describe-subnets --filters Name=vpc-id,Values=$VPC Name=default-for-az,Values=true --query 'Subnets[:2].SubnetId' --output text | tr '\t' ',')
+          aws cloudformation deploy --stack-name "$STACK" --template-file deploy/ecs-fargate.yaml \
+            --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
+            --parameter-overrides ImageUri="$IMAGE" VpcId="$VPC" SubnetIds="$SUBNETS"
+      - name: Smoke test
+        run: |
+          URL=$(aws cloudformation describe-stacks --stack-name "$STACK" --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' --output text)
+          for i in $(seq 1 30); do curl -sf "$URL/" >/dev/null && exit 0; sleep 10; done
+          echo "service did not become healthy"; exit 1

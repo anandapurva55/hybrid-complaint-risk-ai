@@ -1,0 +1,6 @@
+{
+  "seed": 2,
+  "val_macro_f1_argmax": 0.677,
+  "test_macro_f1_argmax": 0.6823,
+  "test_auc_high": 0.9533
+}

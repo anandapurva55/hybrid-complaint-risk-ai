@@ -56,7 +56,8 @@ Full tables, confidence intervals and subgroups: [evaluation_report.md](evaluati
 - About 4 in 10 "high" flags are false alarms, by design (recall-first).
 - Removing the leaky `Recommended IND` feature explains why the classical model's numbers are lower than the first version's: that gap was ~0.05 macro-F1 of label leakage.
 - Subgroup performance is fairly even across age bands; "Bottoms" has the lowest high recall (0.60). Details in the report.
-- LLM layer evaluated live on 45 rows plus injection strings: 100% policy-compliant after validators, 0 injection successes, but ~20% of raw llama3.2 responses are rejected and replaced by a fallback.
+- LLM layer evaluated live on 45 rows plus injection strings: 100% policy-compliant after validators, 0 injection successes; 6.7% of explanations still end up as the local fallback after one retry.
+- Transformer seed variance: macro-F1 0.666 / 0.675 / 0.682 over three seeds.
 
 ## Decision rules
 
@@ -101,7 +102,7 @@ curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" \
        "class_name":"Dresses"}'
 ```
 
-Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 hybrid-risk-api`. Built and smoke-tested locally (health, API-key auth, prediction, LLM explanation, `/stats`). AWS deployment (ECS Fargate + ALB + Bedrock, one CloudFormation stack) is in [deploy/README.md](deploy/README.md); it was deployed and verified live, see [aws_deployment_notes.md](aws_deployment_notes.md).
+Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 hybrid-risk-api`. Built and smoke-tested locally (health, API-key auth, prediction, LLM explanation, `/stats`). AWS deployment (CloudFront HTTPS + WAF rate limit -> ALB -> ECS Fargate with autoscaling, Bedrock explanations, CloudWatch alarms; one CloudFormation stack) is in [deploy/README.md](deploy/README.md); it was deployed and verified live, see [aws_deployment_notes.md](aws_deployment_notes.md).
 
 ## Repository map
 
@@ -119,14 +120,14 @@ Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e
 | `tests/`, `.github/workflows/ci.yml` | tests and CI |
 | `evaluation_report.md`, `decision_policy.md`, `mini_model_card.md` | documentation |
 | `model_manifest.json`, `requirements*.txt` | pinned versions and rebuild steps |
-| `deploy/` | CloudFormation stack and instructions for ECS Fargate + ALB + Bedrock |
+| `deploy/` | CloudFormation: `ecs-fargate.yaml` (the service) and `github-oidc.yaml` (keyless GitHub Actions deploy role); `.github/workflows/deploy.yml` |
 | `aws_deployment_notes.md` | record of the first App Runner deployment, plus status of the current one |
 
 ## Known gaps
 
 - Proxy label, unvalidated against real escalations (the main limitation).
 - Medium class is the weakest (F1 0.44); high precision 0.58.
-- One random split and one transformer training run; no test on real support tickets.
-- llama3.2 (3B) explanations: ~20% rejected by validators; faithfulness beyond numbers/risk level not human-graded.
-- Monitoring is in-process per instance, not fleet-wide; no built-in rate limiting.
-- The AWS stack is HTTP only (no certificate), single task, and is currently left running (delete with `aws cloudformation delete-stack --stack-name hybrid-risk-api`).
+- One random data split (transformer seed variance is measured: macro-F1 0.666-0.682); no test on real support tickets.
+- llama3.2 (3B) explanations: 6.7% rejected by validators after one retry; faithfulness beyond numbers/risk level not human-graded.
+- No automatic retraining or label feedback loop. The CloudFront default certificate gives HTTPS on a `*.cloudfront.net` name; a custom domain needs your own ACM certificate.
+- The AWS stack is currently left running (delete with `aws cloudformation delete-stack --stack-name hybrid-risk-api`).

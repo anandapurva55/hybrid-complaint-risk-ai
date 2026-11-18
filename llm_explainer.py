@@ -34,19 +34,20 @@ LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+LLM_ATTEMPT_TEMPERATURES = (0.0, 0.5)
 LLM_TIMEOUT_S = float(os.environ.get("LLM_TIMEOUT_S", "60"))
 MAX_COMPLAINT_CHARS = 2000
 MAX_FIELD_CHARS = 1500
 
 REQUIRED_FIELDS = ["summary", "recommended_action", "reason", "human_review_required", "risk_notes"]
 
-def _generate(prompt):
+def _generate(prompt, temperature=0.0):
     """Dispatch to the configured provider; returns the model's raw text."""
     if LLM_PROVIDER == "bedrock":
-        return _generate_bedrock(prompt)
+        return _generate_bedrock(prompt, temperature)
     if LLM_PROVIDER == "none":
         raise RuntimeError("LLM disabled (LLM_PROVIDER=none)")
-    return _generate_ollama(prompt)
+    return _generate_ollama(prompt, temperature)
 
 
 _bedrock = None
@@ -58,7 +59,7 @@ def _extract_json(text):
     return text[start:end + 1] if start != -1 and end > start else text
 
 
-def _generate_bedrock(prompt):
+def _generate_bedrock(prompt, temperature=0.0):
     global _bedrock
     if _bedrock is None:
         import boto3
@@ -67,12 +68,12 @@ def _generate_bedrock(prompt):
     resp = _bedrock.converse(
         modelId=BEDROCK_MODEL_ID,
         messages=[{"role": "user", "content": [{"text": prompt}]}],
-        inferenceConfig={"temperature": 0, "maxTokens": 700},
+        inferenceConfig={"temperature": temperature, "maxTokens": 700},
     )
     return _extract_json(resp["output"]["message"]["content"][0]["text"])
 
 
-def _generate_ollama(prompt):
+def _generate_ollama(prompt, temperature=0.0):
     """Call Ollama's chat endpoint in JSON mode and return the model's text.
     Raises on connection errors, timeouts or HTTP errors; the caller falls back."""
     body = json.dumps({
@@ -80,7 +81,7 @@ def _generate_ollama(prompt):
         "messages": [{"role": "user", "content": prompt}],
         "format": "json",
         "stream": False,
-        "options": {"temperature": 0},
+        "options": {"temperature": temperature},
     }).encode()
     req = urllib.request.Request(f"{OLLAMA_HOST}/api/chat", data=body,
                                  headers={"Content-Type": "application/json"})
@@ -228,17 +229,21 @@ def explain_decision(input_payload):
     the deterministic assessment.
     """
     model_outputs = input_payload.get("model_outputs", {})
-    try:
-        parsed = json.loads(_generate(_build_prompt(input_payload)))
-    except Exception as exc:
-        result = _fallback_explanation(model_outputs, reason=str(exc))
-        result["_source"] = "fallback"
-        return result
-
-    result = _normalise(parsed, model_outputs)
-    if result is None:
-        result = _fallback_explanation(model_outputs, reason="LLM response malformed")
-        result["_source"] = "fallback"
-    else:
-        result["_source"] = "llm"
+    prompt = _build_prompt(input_payload)
+    last_error = "LLM response malformed"
+    for temperature in LLM_ATTEMPT_TEMPERATURES:  # a rejected answer gets one more, slightly warmer, try
+        try:
+            parsed = json.loads(_generate(prompt, temperature))
+        except Exception as exc:
+            last_error = str(exc)
+            if not isinstance(exc, (json.JSONDecodeError, KeyError, TypeError)):
+                break  # provider down / timeout: retrying would only add latency
+            continue
+        result = _normalise(parsed, model_outputs)
+        if result is not None:
+            result["_source"] = "llm"
+            return result
+        last_error = "LLM response rejected by validators"
+    result = _fallback_explanation(model_outputs, reason=last_error)
+    result["_source"] = "fallback"
     return result
