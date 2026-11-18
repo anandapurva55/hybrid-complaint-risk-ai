@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from decision import (DEFAULT_CONFIG, action_for, apply_temperature, assess, blend, decide_levels,
+from hybrid_risk.decision import (DEFAULT_CONFIG, action_for, apply_temperature, assess, blend, decide_levels,
                       human_review_required, review_flags, total_variation)
 
 CFG = dict(DEFAULT_CONFIG, t_high=0.4, t_medium=0.5)

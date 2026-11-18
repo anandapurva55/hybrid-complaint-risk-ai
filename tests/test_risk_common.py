@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from risk_common import CLASSES, proba_to_score, rating_to_risk, reorder_proba
+from hybrid_risk.risk_common import CLASSES, proba_to_score, rating_to_risk, reorder_proba
 
 
 @pytest.mark.parametrize("rating,expected", [(1, "high"), (2, "high"), (3, "medium"), (4, "low"), (5, "low")])

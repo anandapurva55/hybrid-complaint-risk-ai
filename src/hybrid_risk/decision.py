@@ -23,9 +23,10 @@ import os
 
 import numpy as np
 
-from risk_common import CLASSES
+from hybrid_risk.paths import MODELS
+from hybrid_risk.risk_common import CLASSES
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decision_config.json")
+CONFIG_PATH = str(MODELS / "decision_config.json")
 
 # Used only if decision_config.json is missing (e.g. unit tests). Real values
 # are produced by tune_decision.py and written to decision_config.json.

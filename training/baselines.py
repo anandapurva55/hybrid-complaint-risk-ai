@@ -8,7 +8,9 @@ import os
 
 import numpy as np
 
-RNN_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rnn_model.keras")
+from hybrid_risk.paths import MODELS
+
+RNN_MODEL_PATH = str(MODELS / "rnn_model.keras")
 
 
 def rnn_available():

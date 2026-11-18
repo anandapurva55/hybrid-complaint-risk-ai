@@ -75,21 +75,22 @@ def decision_pipeline() -> None:
 
 
 def aws_architecture() -> None:
-    with Diagram("", filename=str(OUT / "aws_architecture"), show=False, direction="TB", graph_attr=GRAPH, node_attr=NODE, outformat="png"):
+    with Diagram("", filename=str(OUT / "aws_architecture"), show=False, direction="LR",
+                 graph_attr=GRAPH | {"ranksep": "0.8", "nodesep": "0.45", "splines": "spline"}, node_attr=NODE, outformat="png"):
         client = Users("API client")
         with Cluster("Edge"):
             waf = WAF("AWS WAF\nrate limit per IP")
             cdn = CloudFront("CloudFront\nHTTPS")
         with Cluster("Serving (ECS on Fargate, autoscaling 1 to 3 tasks)"):
-            alb = ALB("ALB\nonly CloudFront IPs\ncan reach it")
+            alb = ALB("ALB\nonly CloudFront IPs")
             api = Fargate("FastAPI container\nclassical + DistilBERT +\ndecision layer")
-        with Cluster("AWS services used by the task"):
-            bedrock = Bedrock("Bedrock\nNova Lite\n(explanations)")
-            secret = SecretsManager("Secrets Manager\ngenerated API key")
-            logs = Cloudwatch("CloudWatch\nlogs, EMF metrics,\n4 alarms")
-        client >> Edge(label="HTTPS + X-API-Key") >> waf >> cdn >> Edge(label="HTTP, forwards key") >> alb >> api
-        api >> Edge(label="task role: one model only") >> bedrock
-        secret >> Edge(style="dashed", label="injected at start") >> api
+        with Cluster("Used by the task"):
+            bedrock = Bedrock("Bedrock\nNova Lite")
+            secret = SecretsManager("Secrets Manager\nAPI key")
+            logs = Cloudwatch("CloudWatch\nmetrics + alarms")
+        client >> Edge(label="HTTPS + X-API-Key") >> waf >> cdn >> alb >> api
+        api >> Edge(label="one model only") >> bedrock
+        secret >> Edge(style="dashed", label="at start") >> api
         api >> Edge(label="every prediction") >> logs
 
 

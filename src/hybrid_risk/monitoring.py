@@ -21,10 +21,10 @@ from collections import deque
 WINDOW = 1000
 MIN_N = 100
 ALERT_DELTA = 0.10
-_HERE = os.path.dirname(os.path.abspath(__file__))
+from hybrid_risk.paths import RESULTS
 
 
-def load_baseline(path=os.path.join(_HERE, "monitoring_baseline.json")):
+def load_baseline(path=str(RESULTS / "monitoring_baseline.json")):
     try:
         with open(path) as f:
             return json.load(f)

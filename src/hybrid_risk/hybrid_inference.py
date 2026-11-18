@@ -24,7 +24,7 @@ Input schema (mirrors the Women's E-Commerce Clothing Reviews columns)
     }
 `recommended_ind` is accepted but ignored (label-leakage feature, see risk_common.py).
 
-Smoke test:  python hybrid_inference.py
+Smoke test:  python -m hybrid_risk.hybrid_inference
 """
 
 import json
@@ -34,12 +34,12 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from decision import action_for, assess, final_score, load_config, review_reasons
-from llm_explainer import explain_decision
-from risk_common import CLASSES, FEATURE_COLUMNS, proba_to_score, reorder_proba
+from hybrid_risk.decision import action_for, assess, final_score, load_config, review_reasons
+from hybrid_risk.llm_explainer import explain_decision
+from hybrid_risk.paths import MODELS, SAMPLES
+from hybrid_risk.risk_common import CLASSES, FEATURE_COLUMNS, proba_to_score, reorder_proba
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-CLASSICAL_MODEL_PATH = os.path.join(_HERE, "classical_model.pkl")
+CLASSICAL_MODEL_PATH = str(MODELS / "classical_model.pkl")
 
 MIN_WORDS = 4  # shorter texts give the text models too little to go on -> force review
 
@@ -57,7 +57,7 @@ def _load_classical():
 def _load_transformer():
     global _transformer
     if _transformer is None:
-        import compact_transformer  # imported lazily: needs torch + transformers
+        from hybrid_risk import compact_transformer  # imported lazily: needs torch + transformers
         _transformer = compact_transformer.load()
     return _transformer
 
@@ -134,7 +134,7 @@ def predict_hybrid(input_data, explain=True):
 
 
 if __name__ == "__main__":
-    with open(os.path.join(_HERE, "sample_inputs.json")) as f:
+    with open(SAMPLES / "sample_inputs.json") as f:
         samples = json.load(f)
 
     for sample in samples:

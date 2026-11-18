@@ -9,8 +9,8 @@ pipeline to classical_model.pkl for use by hybrid_inference.py.
 "Recommended IND" is intentionally excluded (it is a near-proxy of the rating
 the label is derived from); see risk_common.py and evaluate_hybrid.py's ablation.
 
-Run (after `python make_splits.py`):
-    python train_classical_model.py
+Run (after `python -m training.make_splits`):
+    python -m training.train_classical_model
 """
 
 import joblib
@@ -23,7 +23,8 @@ from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from risk_common import (
+from hybrid_risk.paths import DATA_PROCESSED, MODELS
+from hybrid_risk.risk_common import (
     CATEGORICAL_FEATURES,
     CLASSES,
     FEATURE_COLUMNS,
@@ -34,11 +35,11 @@ from risk_common import (
     reorder_proba,
 )
 
-MODEL_PATH = "classical_model.pkl"
+MODEL_PATH = MODELS / "classical_model.pkl"
 
 
 def load_split(name):
-    return pd.read_csv(f"{name}.csv")
+    return pd.read_csv(DATA_PROCESSED / f"{name}.csv")
 
 
 def build_pipeline():

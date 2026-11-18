@@ -12,7 +12,7 @@ Selection rules (explained in the README, "The calibrated decision layer"):
 The test split is never touched here.
 
 Run (after training both models):
-    python tune_decision.py
+    python -m training.tune_decision
 """
 
 import json
@@ -22,16 +22,17 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score, recall_score
 
-import hybrid_inference as hi
-from decision import DEFAULT_CONFIG, apply_temperature, blend, decide_levels
-from risk_common import CLASSES, TARGET, TEXT_FEATURE
+from hybrid_risk import hybrid_inference as hi
+from hybrid_risk.decision import DEFAULT_CONFIG, apply_temperature, blend, decide_levels
+from hybrid_risk.paths import DATA_PROCESSED, MODELS
+from hybrid_risk.risk_common import CLASSES, TARGET, TEXT_FEATURE
 
 TARGET_HIGH_RECALL = 0.70
-CONFIG_PATH = "decision_config.json"
+CONFIG_PATH = MODELS / "decision_config.json"
 
 
 def load_probas(split):
-    df = pd.read_csv(f"{split}.csv")
+    df = pd.read_csv(DATA_PROCESSED / f"{split}.csv")
     return df, hi.classical_proba(df), hi.transformer_proba(df[TEXT_FEATURE].astype(str))
 
 

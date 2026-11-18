@@ -33,7 +33,7 @@ def style(ax):
 
 
 def overview():
-    ev = json.load(open(ROOT / "evaluation_results.json"))
+    ev = json.load(open(ROOT / "results" / "evaluation_results.json"))
     old = ev["historical_reference_old_hybrid"]
     new = ev["hybrid"]
     metrics = ["Recall on high", "Precision on high", "Macro-F1"]
@@ -74,7 +74,7 @@ def overview():
 
 
 def top_terms(k=12):
-    pipe = joblib.load(ROOT / "classical_model.pkl")
+    pipe = joblib.load(ROOT / "models" / "classical_model.pkl")
     tfidf = pipe.named_steps["preprocessor"].named_transformers_["tfidf"]
     names = np.array(tfidf.get_feature_names_out())
     coef = pipe.named_steps["clf"].coef_[:, : len(names)]        # text columns come first

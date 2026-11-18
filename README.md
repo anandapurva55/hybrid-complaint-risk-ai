@@ -46,7 +46,7 @@ A system that reads a piece of customer feedback and answers three practical que
 
 ## About the data and the label
 
-The model is trained on the public [Women's E-Commerce Clothing Reviews](Womens%20Clothing%20E-Commerce%20Reviews.csv) dataset (about 22,600 reviews with text, age, department and a 1 to 5 star rating). Public data with real complaint-escalation outcomes does not exist, so the project uses the star rating as a stand-in for how dissatisfied the customer is:
+The model is trained on the public [Women's E-Commerce Clothing Reviews](data/raw/Womens%20Clothing%20E-Commerce%20Reviews.csv) dataset (about 22,600 reviews with text, age, department and a 1 to 5 star rating). Public data with real complaint-escalation outcomes does not exist, so the project uses the star rating as a stand-in for how dissatisfied the customer is:
 
 | Stars | Tier used by the system | Meaning |
 |---|---|---|
@@ -54,7 +54,7 @@ The model is trained on the public [Women's E-Commerce Clothing Reviews](Womens%
 | 3 | `medium` | Mixed or neutral |
 | 4 to 5 | `low` | Happy, safe to acknowledge automatically |
 
-So every number in this README measures how well the system recognises **dissatisfaction** from the text. That is a useful, measurable signal for triage, and it is the part of "will this customer escalate?" that feedback text actually carries. The code is built so the label is one swappable function ([`rating_to_risk`](risk_common.py)): when you have real outcomes such as reopened tickets, refunds or chargebacks, point `make_splits.py` at them, rerun the pipeline and the calibration and **thresholds** are re-tuned for you. Names like `risk_level` are kept for continuity.
+So every number in this README measures how well the system recognises **dissatisfaction** from the text. That is a useful, measurable signal for triage, and it is the part of "will this customer escalate?" that feedback text actually carries. The code is built so the label is one swappable function ([`rating_to_risk`](src/hybrid_risk/risk_common.py)): when you have real outcomes such as reopened tickets, refunds or chargebacks, point `make_splits.py` at them, rerun the pipeline and the calibration and **thresholds** are re-tuned for you. Names like `risk_level` are kept for continuity.
 
 **Intended use.** Prioritising and routing English-language product feedback for human reviewers, and auto-acknowledging clearly positive messages. **Out of scope:** fully automated customer-facing decisions on negative feedback, other languages or industries without re-validation, and any use as a statistical estimate of churn or regulatory escalation.
 
@@ -63,10 +63,11 @@ So every number in this README measures how well the system recognises **dissati
 ```bash
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
+pip install -e .                  # makes the hybrid_risk package importable
 
-python hybrid_inference.py        # run the 8 bundled examples (explanations need AWS credentials with Bedrock access)
+python -m hybrid_risk.hybrid_inference   # run the 8 bundled examples (explanations need AWS credentials with Bedrock access)
 python -m pytest                  # 68 tests
-uvicorn app:app --reload          # HTTP API on http://127.0.0.1:8000
+uvicorn hybrid_risk.app:app --reload     # HTTP API on http://127.0.0.1:8000
 ```
 
 ```bash
@@ -141,11 +142,11 @@ flowchart LR
     class p,h,m,trig,high,med,low chk
 ```
 
-The **thresholds**, temperatures, blend weight and trigger limits live in [`decision_config.json`](decision_config.json) and are produced by [`tune_decision.py`](tune_decision.py) from the validation split only. The four **review triggers** are: the two models disagree (total-variation distance above 0.45), the top probability is below 0.45, low and high are both at least 0.30 likely, or the text is shorter than four words.
+The **thresholds**, temperatures, blend weight and trigger limits live in [`decision_config.json`](models/decision_config.json) and are produced by [`tune_decision.py`](training/tune_decision.py) from the validation split only. The four **review triggers** are: the two models disagree (total-variation distance above 0.45), the top probability is below 0.45, low and high are both at least 0.30 likely, or the text is shorter than four words.
 
 ### The calibrated decision layer, step by step
 
-All of this lives in [`decision.py`](decision.py), uses only **NumPy** and has no model code in it. Its numbers come from [`decision_config.json`](decision_config.json), which [`tune_decision.py`](tune_decision.py) writes using the validation split only.
+All of this lives in [`decision.py`](src/hybrid_risk/decision.py), uses only **NumPy** and has no model code in it. Its numbers come from [`decision_config.json`](models/decision_config.json), which [`tune_decision.py`](training/tune_decision.py) writes using the validation split only.
 
 1. **Probabilities.** Each model outputs `[P(low), P(medium), P(high)]`: the **classical model** through `predict_proba`, **DistilBERT** through a softmax. The column order is fixed in one place (`reorder_proba`), because **scikit-learn** lists classes alphabetically.
 2. **Temperature calibration.** Raw model confidence is often too high or too low. For each model one number `T` rescales its probabilities as `p^(1/T)` and renormalises them. `T` is found by minimising **log-loss** on the validation split over a grid from 0.5 to 4.0. The result is `T = 0.9` for the **classical model** (slightly sharper) and `T = 1.15` for **DistilBERT** (slightly softer). Class weights are deliberately not used in training, because they distort the probabilities that this layer depends on.
@@ -171,13 +172,13 @@ A "low" case that trips any trigger is never auto-replied: `action_for` turns it
 ### Policy: what the system commits to, and how to change it
 
 - **A person stays in the loop where it matters.** A high-tier case is always escalated and reviewed, a medium-tier case always goes to manual review, and a low-tier case is answered automatically only when no review trigger fired.
-- **Missing an unhappy customer costs more than a wasted review.** So the **thresholds** are tuned for **recall** on the high tier first. The price is that roughly 4 in 10 "high" flags are false alarms; move `t_high` in [`decision_config.json`](decision_config.json) to trade the other way.
+- **Missing an unhappy customer costs more than a wasted review.** So the **thresholds** are tuned for **recall** on the high tier first. The price is that roughly 4 in 10 "high" flags are false alarms; move `t_high` in [`decision_config.json`](models/decision_config.json) to trade the other way.
 - **The LLM explains and may add caution, nothing more.** It cannot change a score, the tier, the action or the review flag, and it cannot lower the flag. How this is enforced is in [Safety and guardrails](#safety-and-guardrails).
-- **Changing the policy** means re-running [`tune_decision.py`](tune_decision.py) on the validation split, then [`evaluate_hybrid.py`](evaluate_hybrid.py), and checking **recall** on high, the review share and the number of truly-high cases auto-replied before accepting new values. `evaluate_hybrid.py` also refreshes the monitoring baseline.
+- **Changing the policy** means re-running [`tune_decision.py`](training/tune_decision.py) on the validation split, then [`evaluate_hybrid.py`](evaluation/evaluate_hybrid.py), and checking **recall** on high, the review share and the number of truly-high cases auto-replied before accepting new values. `evaluate_hybrid.py` also refreshes the monitoring baseline.
 
 ## Results
 
-Evaluated on the held-out test split (3,397 reviews, stratified 70/15/15 with a fixed seed), which was never used for training or tuning. The headline numbers are in the row and figure at the top. Raw numbers are written to [`evaluation_results.json`](evaluation_results.json) and [`robustness_results.json`](robustness_results.json) by [`evaluate_hybrid.py`](evaluate_hybrid.py) and [`evaluate_robustness.py`](evaluate_robustness.py). Class shares are low 77.1%, medium 12.5% and high 10.5%.
+Evaluated on the held-out test split (3,397 reviews, stratified 70/15/15 with a fixed seed), which was never used for training or tuning. The headline numbers are in the row and figure at the top. Raw numbers are written to [`evaluation_results.json`](results/evaluation_results.json) and [`robustness_results.json`](results/robustness_results.json) by [`evaluate_hybrid.py`](evaluation/evaluate_hybrid.py) and [`evaluate_robustness.py`](evaluation/evaluate_robustness.py). Class shares are low 77.1%, medium 12.5% and high 10.5%.
 
 - **Model comparison:** **DistilBERT** alone reaches **macro-F1** 0.675, against 0.593 for the **classical model** and 0.547 for the **LSTM** baseline. The tuned hybrid reaches 0.673 with 0.71 **recall** on the high tier. Its edge over **DistilBERT** alone is small (+0.002 to +0.012 at 95% confidence), so the gain comes from the **transformer**.
 - **Stability:** three **fine-tuning** seeds give **macro-F1** 0.666, 0.675 and 0.682, and 1,000 **bootstrap** resamples give the hybrid a 95% interval of 0.652 to 0.694.
@@ -212,7 +213,7 @@ Per-class (hybrid): low P 0.974 / R 0.900; medium P 0.395 / R 0.507 (F1 0.444); 
 **Uncertainty (1,000 bootstrap resamples of the test set, 95% CI):** hybrid **macro-F1** 0.652-0.694; high **recall** 0.660-0.755; high **precision** 0.540-0.629. Hybrid minus transformer-alone **macro-F1**: +0.002 to +0.012. The blend helps, but only slightly (the CI excludes zero by a hair; the comparison is mildly favourable to the hybrid because the **thresholds** were tuned for it). The **transformer** is where the gain comes from. Classical model 5-fold CV on train+val: **macro-F1** 0.586 +/- 0.011, accuracy 0.827 +/- 0.005, so test results are not a lucky split for that model.
 
 **Training-seed variance (transformer)**
-Three **fine-tuning** runs with different seeds ([`seed_runs/`](seed_runs/)): test **macro-F1** at argmax 0.675 (shipped, seed 42), 0.666 (seed 1), 0.682 (seed 2); mean 0.674, spread about +/-0.008. High-vs-rest **AUC** 0.950 / 0.951 / 0.953. The **transformer**'s advantage over the **classical model** (0.593) is many times larger than seed noise; the tiny hybrid-over-transformer gain (+0.002 to +0.012) is of the same order as seed noise, so treat it as unproven.
+Three **fine-tuning** runs with different seeds ([`seed_runs/`](results/seed_runs/)): test **macro-F1** at argmax 0.675 (shipped, seed 42), 0.666 (seed 1), 0.682 (seed 2); mean 0.674, spread about +/-0.008. High-vs-rest **AUC** 0.950 / 0.951 / 0.953. The **transformer**'s advantage over the **classical model** (0.593) is many times larger than seed noise; the tiny hybrid-over-transformer gain (+0.002 to +0.012) is of the same order as seed noise, so treat it as unproven.
 
 **History of the redesign (same test split)**
 
@@ -270,7 +271,7 @@ Two cumulative binary models (`>=medium`, `=high`) instead of the multinomial **
 Performance is fairly even across age bands. Bottoms has the lowest high **recall** (0.60) and the lowest **macro-F1**; the Intimate and Jackets numbers rest on 17-21 high cases and are noisy. No formal fairness test was run, and only age is demographic-adjacent in the features.
 
 **The LLM layer**
-Evaluated live with **Amazon Bedrock** **Nova Lite** ([`evaluate_llm.py`](evaluate_llm.py)) on 45 stratified test rows plus 3 injection strings:
+Evaluated live with **Amazon Bedrock** **Nova Lite** ([`evaluate_llm.py`](evaluation/evaluate_llm.py)) on 45 stratified test rows plus 3 injection strings:
 
 | Check | Result |
 |---|---|
@@ -312,15 +313,15 @@ For the **transformer**, every response includes the calibrated probabilities, t
 Training, tuning and testing use different data on purpose: models learn from the train split, the decision layer is tuned on the validation split, and the test split is read only for the final evaluation. Rebuild everything with:
 
 ```bash
-python make_splits.py              # stratified 70/15/15 split with a fixed seed
-python train_classical_model.py
-python train_transformer_model.py  # about 20 min on a laptop; add --seed 1 for the variance study
-python compact_transformer.py      # fp32 (268 MB) to int8 (60 MB), no measurable accuracy loss
-python tune_decision.py            # calibration, blend weight and thresholds from validation
-python evaluate_hybrid.py          # test metrics, triage numbers, monitoring baseline
-python evaluate_robustness.py      # bootstrap intervals, cross-validation, subgroups
-python evaluate_llm.py --n 45      # live check of the explanation layer (needs Bedrock access)
-python docs/diagrams/generate.py   # redraw the diagrams in this README
+python -m training.make_splits               # stratified 70/15/15 split with a fixed seed
+python -m training.train_classical_model
+python -m training.train_transformer_model   # about 20 min on a laptop; add --seed 1 for the variance study
+python -m hybrid_risk.compact_transformer    # fp32 (268 MB) to int8 (60 MB), no measurable accuracy loss
+python -m training.tune_decision             # calibration, blend weight and thresholds from validation
+python -m evaluation.evaluate_hybrid         # test metrics, triage numbers, monitoring baseline
+python -m evaluation.evaluate_robustness     # bootstrap intervals, cross-validation, subgroups
+python -m evaluation.evaluate_llm --n 45     # live check of the explanation layer (needs Bedrock access)
+python docs/diagrams/generate.py             # redraw the diagrams in this README
 ```
 
 ## AWS architecture
@@ -330,10 +331,10 @@ python docs/diagrams/generate.py   # redraw the diagrams in this README
 | Layer | Service | Role |
 |---|---|---|
 | Edge | **CloudFront**, **AWS WAF** | **HTTPS** with the default certificate, HTTP redirected, and a rate limit of 300 requests per 5 minutes per IP |
-| Serving | **Application Load Balancer**, **ECS on Fargate** | The load balancer only accepts **CloudFront**'s address range. Tasks have 2 vCPU and 4 GB and autoscale from 1 to 3 on CPU at 60%. The image is about 550 MB (CPU-only **PyTorch**, no TensorFlow) |
+| Serving | **Application Load Balancer**, **ECS on Fargate** | The load balancer only accepts **CloudFront**'s address range. Tasks have 2 vCPU and 4 GB and autoscale from 1 to 3 on CPU at 60%. The image is about 550 MB compressed in ECR (about 2 GB unpacked, mostly CPU-only **PyTorch**; no TensorFlow) |
 | Explanations | **Amazon Bedrock** (**Nova Lite**) | Called through a task role allowed to invoke only that model |
 | Secrets | **AWS Secrets Manager** | Generates the API key at deploy time and injects it into the container |
-| Observability | **CloudWatch** | One **EMF** metric line per prediction (`Predictions`, `ReviewRequired`, `FallbackExplanation`, `AutoReply`, `EscalatedHigh`, `TopProbability`) and four alarms: 5xx errors, unhealthy task, fallback share above 40%, review share above 50%. `GET /stats` compares one task with the test-split baseline in [`monitoring_baseline.json`](monitoring_baseline.json) |
+| Observability | **CloudWatch** | One **EMF** metric line per prediction (`Predictions`, `ReviewRequired`, `FallbackExplanation`, `AutoReply`, `EscalatedHigh`, `TopProbability`) and four alarms: 5xx errors, unhealthy task, fallback share above 40%, review share above 50%. `GET /stats` compares one task with the test-split baseline in [`monitoring_baseline.json`](results/monitoring_baseline.json) |
 | Infrastructure | **CloudFormation** | One stack, [`deploy/ecs-fargate.yaml`](deploy/ecs-fargate.yaml), linted in CI |
 
 A single prediction takes about 6 seconds end to end, dominated by the **LLM** call; the two text models take well under a second on CPU. A running stack costs roughly 3 to 6 dollars a day (mostly the load balancer and **Fargate**), so delete it when idle.
@@ -343,7 +344,7 @@ A single prediction takes about 6 seconds end to end, dominated by the **LLM** c
 Deploys run from **GitHub Actions** with short-lived **OIDC** credentials: the role can be assumed only by this repository's approved `production` environment and can only manage this stack.
 
 <details>
-<summary><b>Deploy it</b>: commands, the keyless pipeline, teardown and why ECS rather than App Runner</summary>
+<summary><b>Deploy it</b>: commands, the keyless pipeline, teardown and why ECS rather than **App Runner**</summary>
 
 **Option A: deploy by hand**
 
@@ -433,21 +434,43 @@ Unknown fields are ignored, so older clients that still send `image` or `recomme
 
 ## File by file
 
-The dependency direction is one-way: `app` to `hybrid_inference` to (`decision`, the models, `llm_explainer`), and `decision` imports nothing heavy.
+```
+.
+├── README.md  Dockerfile  pyproject.toml  requirements.txt  requirements-dev.txt  .env.example
+├── src/hybrid_risk/     the service: decision layer, inference, LLM explainer, API, monitoring
+├── training/            data split, model training, decision tuning, LSTM baseline
+├── evaluation/          test evaluation, robustness study, LLM check, sample outputs
+├── models/              trained artifacts the service loads (classical model, int8 DistilBERT, decision config)
+├── data/                raw dataset, generated splits (git-ignored) and bundled samples
+├── results/             evaluation outputs, seed study and the monitoring baseline
+├── notebooks/           data exploration
+├── deploy/              CloudFormation stacks
+├── docs/                diagrams, figures and badges as code, plus the generated images
+├── tests/               68 tests
+└── .github/workflows/   CI and the deploy pipeline
+```
 
+The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`, the models, `llm_explainer`), and `decision` imports nothing heavy. Scripts are run as modules from the repository root (`python -m training.make_splits`), and every file location comes from [`paths.py`](src/hybrid_risk/paths.py), so nothing depends on the working directory.
+
+**`src/hybrid_risk/`**
 - **`risk_common.py`**: constants, the rating-to-tier label function and probability ordering. The single place to change the label.
-- **`decision.py`** and **`decision_config.json`**: the pure **NumPy** decision layer (calibration, blending, **thresholds**, **review triggers**, action) and its tuned parameters. No TensorFlow, **PyTorch** or **scikit-learn** imports, so it is cheap to test.
+- **`decision.py`**: the pure **NumPy** decision layer (calibration, blending, **thresholds**, **review triggers**, action). No TensorFlow, **PyTorch** or **scikit-learn** imports, so it is cheap to test. Its tuned parameters are in `models/decision_config.json`.
 - **`hybrid_inference.py`**: loads the models once, runs one request end to end and assembles the response. The **classical model** is a `classical_model.pkl` pipeline: **TF-IDF** (1 to 2 grams, 5,000 features), scaled age and feedback count, one-hot division, department and class, then **Logistic Regression**.
-- **`compact_transformer.py`** and **`transformer_assets/`**: **int8** weight storage and loader for **DistilBERT** (max 128 tokens), plus its tokenizer and config. Weights are stored per-row **int8** with **fp32** scales and de-quantised at load, so nothing depends on a CPU-specific quantisation engine. The 268 MB **fp32** weights stay out of git.
+- **`compact_transformer.py`**: **int8** weight storage and loader for **DistilBERT** (max 128 tokens). Weights are stored per-row **int8** with **fp32** scales and de-quantised at load, so nothing depends on a CPU-specific quantisation engine. The 268 MB **fp32** weights stay out of git; `models/transformer_assets/` holds the **int8** copy, tokenizer and config.
 - **`llm_explainer.py`**: the **Bedrock** call, prompt building with sanitising, output validators, one retry, the local fallback and the policy re-imposition.
 - **`app.py`**: the **FastAPI** service: validation, API-key check, `/predict`, `/stats`, safe error handling.
-- **`monitoring.py`** and **`monitoring_baseline.json`**: rolling in-process drift monitor and the **CloudWatch** metric lines.
+- **`monitoring.py`**: rolling in-process drift monitor and the **CloudWatch** metric lines (baseline in `results/monitoring_baseline.json`).
+- **`paths.py`**: where data, models and results live.
+
+**`training/`** and **`evaluation/`**
 - **`make_splits.py`**, **`train_classical_model.py`**, **`train_transformer_model.py`**, **`tune_decision.py`**: the reproducible training and tuning path.
-- **`evaluate_hybrid.py`**, **`evaluate_robustness.py`**, **`evaluate_llm.py`**, **`generate_sample_outputs.py`**: evaluation and the worked examples ([`sample_inputs.json`](sample_inputs.json), [`sample_outputs.json`](sample_outputs.json)).
-- **`baselines.py`** and **`train_rnn_model.py`**: the **LSTM** baseline, kept for the comparison in the results but not part of the decision.
+- **`train_rnn_model.py`** and **`baselines.py`**: the **LSTM** baseline, kept for the comparison in the results but not part of the decision.
+- **`evaluate_hybrid.py`**, **`evaluate_robustness.py`**, **`evaluate_llm.py`**, **`generate_sample_outputs.py`**: evaluation and the worked examples ([`sample_inputs.json`](data/samples/sample_inputs.json), [`sample_outputs.json`](data/samples/sample_outputs.json)).
+
+**Everything else**
 - **`tests/`**: 68 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
 - **`deploy/`** and **`.github/workflows/`**: the **CloudFormation** stacks (`ecs-fargate.yaml`, `github-oidc.yaml`), CI and the deploy workflow.
-- **`docs/`**: the diagrams, figures and badges as code ([`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py), [`make_badges.py`](docs/diagrams/make_badges.py); they need `pip install diagrams` and **Graphviz**), so they stay in step with the system.
+- **`docs/`**: [`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py) and [`make_badges.py`](docs/diagrams/make_badges.py) draw the diagrams, figures and badges (they need `pip install diagrams` and **Graphviz**), so the pictures stay in step with the system.
 
 ## Testing
 
@@ -459,7 +482,7 @@ The dependency direction is one-way: `app` to `hybrid_inference` to (`decision`,
 |---|---|
 | Decide on probabilities, not one score | A 50/50 split between low and high is different from a confident medium; an averaged score cannot tell them apart. Conflicting evidence now has its own review trigger |
 | Fine-tuned **DistilBERT** as the main model | Frozen sentence embeddings were worse than **TF-IDF**; **fine-tuning** lifted **macro-F1** from 0.59 to 0.67 |
-| **LSTM** dropped | Its optimal blend weight was zero once **DistilBERT** existed; removing it also removed TensorFlow from serving and cut the image from about 1.7 GB to 550 MB |
+| **LSTM** dropped | Its optimal blend weight was zero once **DistilBERT** existed; removing it also removed TensorFlow from serving and cut the compressed image from about 1.7 GB to about 550 MB |
 | No image model in the decision | An earlier **CNN** trained on **Fashion-MNIST** could not read complaint photos and, with no photo, contributed a constant that hid most high-tier cases (**recall** 0.13). No public dataset pairs complaint photos with outcomes. The model and its code were removed; a real image signal needs outcome-labelled photos |
 | Remove `Recommended IND` | It nearly encodes the rating, so it inflates scores without adding understanding |
 | Thresholds tuned for **recall** on "high" | Missing an unhappy customer costs more than a wasted review |
@@ -468,7 +491,7 @@ The dependency direction is one-way: `app` to `hybrid_inference` to (`decision`,
 
 ## Limitations and next steps
 
-- **Next step with the biggest payoff: real outcomes.** Retrain on reopened tickets, refunds or chargebacks if you have them: (1) change `rating_to_risk`, or add a loader in `make_splits.py`, so `risk_level` comes from your outcome column; (2) rerun `make_splits.py`, both training scripts, `tune_decision.py` and `evaluate_hybrid.py`; (3) re-check the review-trigger limits in `decision_config.json` against the new review share.
+- **Next step with the biggest payoff: real outcomes.** Retrain on reopened tickets, refunds or chargebacks if you have them: (1) change `rating_to_risk`, or add a loader in `training/make_splits.py`, so `risk_level` comes from your outcome column; (2) rerun `training/make_splits.py`, both training scripts, `training/tune_decision.py` and `evaluation/evaluate_hybrid.py`; (3) re-check the review-trigger limits in `models/decision_config.json` against the new review share.
 - **Image evidence.** With outcome-labelled complaint photos, a **fine-tuned** image model can be blended in only when a photo is attached. Until then the system is text and profile only.
 - **Medium tier** is the hardest (F1 0.44), as mixed reviews are ambiguous by nature.
 - **Precision on "high"** is 0.58 by design; tune `t_high` to trade **recall** for fewer false alarms.

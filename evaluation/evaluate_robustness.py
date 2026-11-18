@@ -9,7 +9,7 @@ Uncertainty, subgroup and ordinal-modelling checks for the hybrid.
   4. Ordinal experiment: two cumulative binary logistic models (>=medium,
      =high) vs the multinomial classical model.
 
-Writes robustness_results.json.   python evaluate_robustness.py
+Writes results/robustness_results.json.   python -m evaluation.evaluate_robustness
 """
 import json
 
@@ -19,10 +19,11 @@ from sklearn.metrics import f1_score, recall_score, precision_score, roc_auc_sco
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold, cross_validate
 
-import hybrid_inference as hi
-from decision import assess, decide_levels, load_config
-from risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE, FEATURE_COLUMNS
-from train_classical_model import build_pipeline
+from hybrid_risk import hybrid_inference as hi
+from hybrid_risk.decision import assess, decide_levels, load_config
+from hybrid_risk.paths import DATA_PROCESSED, RESULTS
+from hybrid_risk.risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE, FEATURE_COLUMNS
+from training.train_classical_model import build_pipeline
 
 N_BOOT = 1000
 
@@ -42,7 +43,7 @@ def ci(vals):
 
 def main():
     cfg = load_config()
-    test = pd.read_csv("test.csv")
+    test = pd.read_csv(DATA_PROCESSED / "test.csv")
     y = test[TARGET].to_numpy()
     p_cl = hi.classical_proba(test)
     p_rn = hi.transformer_proba(test[TEXT_FEATURE].astype(str))
@@ -69,7 +70,7 @@ def main():
     }
 
     # 2. cross-validation of the classical model
-    trval = pd.concat([pd.read_csv("train.csv"), pd.read_csv("val.csv")])
+    trval = pd.concat([pd.read_csv(DATA_PROCESSED / "train.csv"), pd.read_csv(DATA_PROCESSED / "val.csv")])
     cv = cross_validate(build_pipeline(), trval[FEATURE_COLUMNS], trval[TARGET],
                         cv=StratifiedKFold(5, shuffle=True, random_state=RANDOM_STATE),
                         scoring=["f1_macro", "accuracy"], n_jobs=1)
@@ -98,7 +99,7 @@ def main():
     out["subgroups"] = groups
 
     # 4. ordinal experiment on the classical feature pipeline
-    train = pd.read_csv("train.csv")
+    train = pd.read_csv(DATA_PROCESSED / "train.csv")
     pipe = build_pipeline().fit(train[FEATURE_COLUMNS], train[TARGET])
     pre = pipe.named_steps["preprocessor"]
     Xtr, Xte = pre.transform(train[FEATURE_COLUMNS]), pre.transform(test[FEATURE_COLUMNS])
@@ -122,7 +123,7 @@ def main():
                      "ordinal": round(roc_auc_score(y == "high", p_ord[:, 2]), 4)},
     }
 
-    with open("robustness_results.json", "w") as f:
+    with open(RESULTS / "robustness_results.json", "w") as f:
         json.dump(out, f, indent=2)
     print(json.dumps(out, indent=2))
 

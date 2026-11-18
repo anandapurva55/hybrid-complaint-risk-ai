@@ -17,8 +17,8 @@
       "review_reasons": []
     },
     "llm_explanation": {
-      "summary": "The customer loves the sweater, praising its color and fit, and expresses intent to buy more from the brand.",
-      "reason": "The model rated the risk level as low due to the positive feedback and the absence of any negative comments, with a 99.4% probability of being a low-risk review.",
+      "summary": "Love this sweater! The color is gorgeous and it fits true to size. Will definitely buy more from this brand.",
+      "reason": "The model assessed the feedback as low risk due to the positive sentiment and lack of any negative or suspicious content, with a 99.4% probability of being low risk.",
       "risk_notes": [],
       "human_review_required": false,
       "recommended_action": "auto_reply"
@@ -46,7 +46,7 @@
     },
     "llm_explanation": {
       "summary": "The top runs small and the stitching on one sleeve is already coming loose after a single wash. Disappointed for the price.",
-      "reason": "The model rated the risk level as high due to the high probabilities of quality issues and customer dissatisfaction.",
+      "reason": "The model rated the risk level as high due to the high probabilities of quality issues and customer dissatisfaction, with a final score of 0.821 and a high probability of 0.685.",
       "risk_notes": [],
       "human_review_required": true,
       "recommended_action": "escalate_immediately"
@@ -76,7 +76,7 @@
     },
     "llm_explanation": {
       "summary": "The customer received a dress that was torn and smelled of chemicals, and they have not received a response from support after two weeks.",
-      "reason": "The model rated the risk level as high due to the customer's complaint about the product condition and lack of response from support, with a high final score of 0.873.",
+      "reason": "The model assigned a high risk level due to the severity of the complaint and the lack of response from support, with a final score of 0.873 and a high probability of 0.807.",
       "risk_notes": [
         "models_disagree"
       ],
@@ -136,7 +136,7 @@
     },
     "llm_explanation": {
       "summary": "The customer received the wrong size and a broken zipper for the third consecutive order, expressing dissatisfaction and a potential decision to stop shopping here.",
-      "reason": "The model rated the risk level as high due to the high probability (74.9%) of a recurring issue, indicating a potential systemic problem.",
+      "reason": "The model rated the risk level as high due to the customer's repeated issues and their expressed intent to stop shopping, which indicates a significant risk of churn.",
       "risk_notes": [
         "models_disagree"
       ],
@@ -165,8 +165,8 @@
       "review_reasons": []
     },
     "llm_explanation": {
-      "summary": "The customer praised the dress for its beautiful design, great quality fabric, and quick delivery, and mentioned receiving many compliments at a wedding.",
-      "reason": "The models rated the risk level as low due to the positive feedback and high probability (98.3%) of low risk.",
+      "summary": "The customer praised the dress for its beautiful design, great quality fabric, and quick delivery, and mentioned receiving many compliments at the wedding.",
+      "reason": "The models rated the risk level as low due to the positive feedback and high probability (0.983) of low risk.",
       "risk_notes": [],
       "human_review_required": false,
       "recommended_action": "auto_reply"
@@ -196,7 +196,7 @@
     },
     "llm_explanation": {
       "summary": "ok",
-      "reason": "The model rated the risk level as medium due to a short text input, with a final score of 0.152 and a medium risk probability of 0.166.",
+      "reason": "The models assessed a medium risk level due to the short text provided, with a final score of 0.152 and a medium probability of 0.166.",
       "risk_notes": [
         "short_text"
       ],

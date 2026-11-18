@@ -16,9 +16,9 @@ REQUIRES AWS credentials with Bedrock access (LLM_PROVIDER=bedrock). If the call
 is the local fallback, which is reported as such (llm_share = 0) and no results
 file is written. Factual faithfulness beyond numbers (invented events, etc.)
 still needs human grading; the script dumps the sampled outputs to
-llm_eval_samples.json for that.
+results/llm_eval_samples.json for that.
 
-    python evaluate_llm.py --n 60
+    python -m evaluation.evaluate_llm --n 60
 """
 
 import argparse
@@ -27,9 +27,10 @@ import re
 
 import pandas as pd
 
-import llm_explainer as le
-from hybrid_inference import predict_hybrid
-from risk_common import RANDOM_STATE, TARGET
+from hybrid_risk import llm_explainer as le
+from hybrid_risk.hybrid_inference import predict_hybrid
+from hybrid_risk.paths import DATA_PROCESSED, RESULTS
+from hybrid_risk.risk_common import RANDOM_STATE, TARGET
 
 NUM_RE = re.compile(r"\d+\.\d+")
 PCT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
@@ -70,7 +71,7 @@ def main():
     ap.add_argument("--n", type=int, default=60)
     n = ap.parse_args().n
 
-    test = pd.read_csv("test.csv")
+    test = pd.read_csv(DATA_PROCESSED / "test.csv")
     per = max(1, n // 3)
     sample = pd.concat([g.sample(min(per, len(g)), random_state=RANDOM_STATE) for _, g in test.groupby(TARGET)])
 
@@ -103,9 +104,9 @@ def main():
         print("\nNo LLM responses (Bedrock unreachable or calls failing): all outputs were the local "
               "fallback, so these numbers say nothing about the LLM. No results file written.")
         return
-    with open("llm_evaluation_results.json", "w") as f:
+    with open(RESULTS / "llm_evaluation_results.json", "w") as f:
         json.dump(summary, f, indent=2)
-    with open("llm_eval_samples.json", "w") as f:
+    with open(RESULTS / "llm_eval_samples.json", "w") as f:
         json.dump(records, f, indent=2)
 
 

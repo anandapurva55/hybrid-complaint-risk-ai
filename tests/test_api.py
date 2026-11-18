@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import app as app_module
+from hybrid_risk import app as app_module
 
 VALID = {"review_text": "The zipper broke after one wear and support never replied.", "age": 35,
          "positive_feedback_count": 2, "division_name": "General", "department_name": "Dresses",
@@ -66,7 +66,7 @@ def test_internal_errors_do_not_leak_details(monkeypatch):
 
 def test_missing_model_artifact_is_503(monkeypatch):
     def missing(d):
-        raise FileNotFoundError("/app/transformer_assets/weights_int8.npz")
+        raise FileNotFoundError("/app/models/transformer_assets/weights_int8.npz")
     monkeypatch.setattr(app_module.hybrid_inference, "predict_hybrid", missing)
     monkeypatch.delenv("API_KEY", raising=False)
     r = TestClient(app_module.app).post("/predict", json=VALID)

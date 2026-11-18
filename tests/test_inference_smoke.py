@@ -7,10 +7,11 @@ pytest.importorskip("torch")
 pytest.importorskip("transformers")
 pytest.importorskip("sklearn")
 
-import hybrid_inference as hi  # noqa: E402
+from hybrid_risk import hybrid_inference as hi  # noqa: E402
+from hybrid_risk.paths import MODELS  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
-    not (os.path.exists(hi.CLASSICAL_MODEL_PATH) and os.path.exists(os.path.join("transformer_assets", "weights_int8.npz"))),
+    not (os.path.exists(hi.CLASSICAL_MODEL_PATH) and os.path.exists(str(MODELS / "transformer_assets" / "weights_int8.npz"))),
     reason="model artifacts not present",
 )
 

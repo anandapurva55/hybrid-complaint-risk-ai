@@ -6,7 +6,7 @@ This is the script equivalent of the split cells in data_exploration.ipynb
 RANDOM_STATE = 42), so a fresh clone can reproduce train.csv / val.csv /
 test.csv without opening the notebook:
 
-    python make_splits.py
+    python -m training.make_splits
 
 The label is a PROXY derived from the star rating (see risk_common.rating_to_risk
 and the README's "What this is, and is not" section).
@@ -15,12 +15,12 @@ and the README's "What this is, and is not" section).
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from risk_common import RANDOM_STATE, TARGET, TEXT_FEATURE, rating_to_risk
+from hybrid_risk.paths import DATA_PROCESSED, DATA_RAW
+from hybrid_risk.risk_common import RANDOM_STATE, TARGET, TEXT_FEATURE, rating_to_risk
 
-RAW_CSV = "Womens Clothing E-Commerce Reviews.csv"
 
 
-def build_splits(raw_csv=RAW_CSV):
+def build_splits(raw_csv=DATA_RAW):
     df = pd.read_csv(raw_csv).drop(columns=["Unnamed: 0"])
     df[TARGET] = df["Rating"].apply(rating_to_risk)
     df = df.dropna(subset=[TEXT_FEATURE]).copy()
@@ -38,10 +38,11 @@ def build_splits(raw_csv=RAW_CSV):
 
 def main():
     train_df, val_df, test_df = build_splits()
+    DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
     for name, split in [("train", train_df), ("val", val_df), ("test", test_df)]:
-        split.to_csv(f"{name}.csv", index=False)
+        split.to_csv(DATA_PROCESSED / f"{name}.csv", index=False)
         print(f"{name:5s}: {len(split):5d} rows  {split[TARGET].value_counts(normalize=True).round(3).to_dict()}")
-    print("Saved train.csv, val.csv, test.csv")
+    print("Saved train.csv, val.csv, test.csv to data/processed/")
 
 
 if __name__ == "__main__":

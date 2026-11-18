@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-import llm_explainer as le
+from hybrid_risk import llm_explainer as le
 
 HIGH = {"risk_level": "high", "recommended_action": "escalate_immediately", "human_review_required": True,
         "review_reasons": ["conflicted"], "final_score": 0.8}

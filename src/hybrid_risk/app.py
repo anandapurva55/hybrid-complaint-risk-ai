@@ -9,7 +9,7 @@ Optional auth: if the API_KEY environment variable is set, every request to
 left to the platform in front of the service, e.g. API Gateway / WAF.)
 
 Run:
-    uvicorn app:app --reload
+    uvicorn hybrid_risk.app:app --reload
 """
 
 import hmac
@@ -20,8 +20,8 @@ from typing import Dict, List, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-import hybrid_inference
-from monitoring import Monitor
+from hybrid_risk import hybrid_inference
+from hybrid_risk.monitoring import Monitor
 
 logger = logging.getLogger("hybrid-risk-api")
 

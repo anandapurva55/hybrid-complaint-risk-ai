@@ -1,6 +1,6 @@
 import json
 
-from monitoring import Monitor
+from hybrid_risk.monitoring import Monitor
 
 
 def result(level="low", action="auto_reply", review=False, top=0.9, source="llm"):
@@ -43,7 +43,7 @@ def test_window_is_bounded():
 
 def test_emf_line_is_valid_and_free_of_text():
     import io
-    from monitoring import emit_metrics
+    from hybrid_risk.monitoring import emit_metrics
     buf = io.StringIO()
     emit_metrics({"level": "high", "action": "escalate_immediately", "review": True, "top_p": 0.8, "fallback": False}, buf)
     line = json.loads(buf.getvalue())

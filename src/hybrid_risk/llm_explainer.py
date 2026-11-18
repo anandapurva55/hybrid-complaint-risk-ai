@@ -26,7 +26,7 @@ import json
 import os
 import re
 
-from decision import ACTION_BY_RISK
+from hybrid_risk.decision import ACTION_BY_RISK
 
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "bedrock").lower()
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")

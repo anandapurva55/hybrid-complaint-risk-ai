@@ -9,7 +9,7 @@ metrics (auto-reply share, human-review share, and how many truly-high cases
 would have been auto-replied), and a leakage ablation (classical model with
 "Recommended IND" added back).
 
-Run:  python evaluate_hybrid.py
+Run:  python -m evaluation.evaluate_hybrid
 """
 
 import json
@@ -24,9 +24,10 @@ from sklearn.metrics import (accuracy_score, classification_report, confusion_ma
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-import hybrid_inference as hi
-from decision import apply_temperature, assess, blend, decide_levels, load_config
-from risk_common import (CATEGORICAL_FEATURES, CLASSES, FEATURE_COLUMNS, NUMERIC_FEATURES,
+from hybrid_risk import hybrid_inference as hi
+from hybrid_risk.decision import apply_temperature, assess, blend, decide_levels, load_config
+from hybrid_risk.paths import DATA_PROCESSED, RESULTS
+from hybrid_risk.risk_common import (CATEGORICAL_FEATURES, CLASSES, FEATURE_COLUMNS, NUMERIC_FEATURES,
                          RANDOM_STATE, TARGET, TEXT_FEATURE, reorder_proba)
 
 MIN_WORDS = hi.MIN_WORDS
@@ -70,8 +71,8 @@ def ablation_with_recommended_ind(train_df, test_df):
 
 def main():
     cfg = load_config()
-    train_df = pd.read_csv("train.csv")
-    test_df = pd.read_csv("test.csv")
+    train_df = pd.read_csv(DATA_PROCESSED / "train.csv")
+    test_df = pd.read_csv(DATA_PROCESSED / "test.csv")
     y = test_df[TARGET].to_numpy()
     y_idx = np.array([CLASSES.index(v) for v in y])
 
@@ -109,7 +110,7 @@ def main():
         "ablation_with_recommended_ind_classical_argmax": ablation_with_recommended_ind(train_df, test_df),
     }
 
-    import baselines
+    from training import baselines
     if baselines.rnn_available():
         p_lstm = baselines.rnn_proba(test_df[TEXT_FEATURE].astype(str))
         out["components_argmax"]["rnn_lstm_baseline_not_in_decision"] = metrics(y, argmax(p_lstm))
@@ -135,11 +136,11 @@ def main():
         "share_forced_to_human_review": 0.807, "share_scored_high": 0.020,
     }
 
-    with open("monitoring_baseline.json", "w") as f:  # reference distribution for monitoring.py
+    with open(RESULTS / "monitoring_baseline.json", "w") as f:  # reference distribution for monitoring.py
         json.dump({"source": "test split", "action_share": out["triage"]["action_share"],
                    "mean_top_probability": round(float(res["p_final"].max(axis=1).mean()), 3)}, f, indent=2)
 
-    with open("evaluation_results.json", "w") as f:
+    with open(RESULTS / "evaluation_results.json", "w") as f:
         json.dump(out, f, indent=2)
 
     print(json.dumps({k: out[k] for k in ("hybrid", "triage", "auc_high_vs_rest", "calibration_ece")}, indent=2))

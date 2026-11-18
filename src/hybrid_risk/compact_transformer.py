@@ -8,18 +8,20 @@ de-quantised back to fp32, so there is no dependency on a particular torch
 quantisation engine / CPU architecture. evaluate_hybrid.py reports the test
 metrics of the shipped (int8) model, so any accuracy cost is visible.
 
-    python compact_transformer.py      # fp32 transformer_model/ -> transformer_assets/
+    python -m hybrid_risk.compact_transformer   # fp32 models/transformer_fp32/ -> models/transformer_assets/
 """
 import os
 import shutil
 
 import numpy as np
 
-ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "transformer_assets")
+from hybrid_risk.paths import MODELS
+
+ASSET_DIR = str(MODELS / "transformer_assets")
 WEIGHTS = os.path.join(ASSET_DIR, "weights_int8.npz")
 
 
-def export(fp32_dir="transformer_model", out_dir=ASSET_DIR):
+def export(fp32_dir=str(MODELS / "transformer_fp32"), out_dir=ASSET_DIR):
     import torch
     from transformers import AutoModelForSequenceClassification
 

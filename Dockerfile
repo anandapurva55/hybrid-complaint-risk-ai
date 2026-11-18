@@ -15,12 +15,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only what inference needs: the modules hybrid_inference.py imports
-# (risk_common, decision, llm_explainer, compact_transformer, monitoring) and the trained artifacts + tuned
-# decision config. The LSTM baseline, raw CSVs and notebooks are left out.
-COPY risk_common.py decision.py llm_explainer.py compact_transformer.py monitoring.py hybrid_inference.py app.py ./
-COPY classical_model.pkl decision_config.json monitoring_baseline.json ./
-COPY transformer_assets/ ./transformer_assets/
+# Copy only what inference needs: the hybrid_risk package, the trained artifacts, the tuned decision
+# config and the monitoring baseline. Training and evaluation code, data, notebooks and the LSTM baseline are left out.
+COPY src/ ./src/
+COPY models/classical_model.pkl models/decision_config.json ./models/
+COPY models/transformer_assets/ ./models/transformer_assets/
+COPY results/monitoring_baseline.json ./results/
+ENV PYTHONPATH=/app/src
 
 # Optional: set API_KEY at run time to require an X-API-Key header on /predict.
 RUN useradd --create-home appuser
@@ -28,4 +29,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "hybrid_risk.app:app", "--host", "0.0.0.0", "--port", "8000"]

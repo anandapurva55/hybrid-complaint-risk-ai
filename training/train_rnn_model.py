@@ -11,8 +11,8 @@ with early stopping on validation loss. No class weights: the decision layer
 works on probabilities, and class imbalance is handled by threshold tuning
 (see decision.py / tune_decision.py).
 
-Run (after `python make_splits.py`):
-    python train_rnn_model.py
+Run (after `python -m training.make_splits`):
+    python -m training.train_rnn_model
 """
 
 import numpy as np
@@ -22,9 +22,10 @@ from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, models
 
-from risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE
+from hybrid_risk.paths import DATA_PROCESSED, MODELS
+from hybrid_risk.risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE
 
-MODEL_PATH = "rnn_model.keras"
+MODEL_PATH = str(MODELS / "rnn_model.keras")
 
 MAX_TOKENS = 10000
 SEQUENCE_LENGTH = 100
@@ -39,7 +40,7 @@ LABEL_TO_ID = {c: i for i, c in enumerate(CLASSES)}
 
 
 def load_split(name):
-    df = pd.read_csv(f"{name}.csv")
+    df = pd.read_csv(DATA_PROCESSED / f"{name}.csv")
     texts = df[TEXT_FEATURE].astype(str).to_numpy()
     labels = df[TARGET].map(LABEL_TO_ID).to_numpy()
     return texts, labels

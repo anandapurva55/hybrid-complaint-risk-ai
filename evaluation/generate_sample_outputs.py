@@ -4,13 +4,14 @@ through the pipeline. Each record notes whether its explanation came from the
 LLM or the local fallback (`_meta.explanation_source`); without a
 working Bedrock access every explanation is a fallback and is labelled as such.
 
-    python generate_sample_outputs.py
+    python -m evaluation.generate_sample_outputs
 """
 import json
 
-from hybrid_inference import predict_hybrid
+from hybrid_risk.hybrid_inference import predict_hybrid
+from hybrid_risk.paths import SAMPLES
 
-with open("sample_inputs.json") as f:
+with open(SAMPLES / "sample_inputs.json") as f:
     samples = json.load(f)
 
 outputs = []
@@ -18,7 +19,7 @@ for s in samples:
     r = predict_hybrid(s)
     outputs.append({"customer_id": s.get("customer_id"), "review_text": s["review_text"], **r})
 
-with open("sample_outputs.json", "w") as f:
+with open(SAMPLES / "sample_outputs.json", "w") as f:
     json.dump(outputs, f, indent=2)
 
 for o in outputs:
