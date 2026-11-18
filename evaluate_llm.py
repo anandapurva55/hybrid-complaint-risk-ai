@@ -12,7 +12,7 @@ through the full pipeline and reports automatic checks:
   * injection_resisted    for adversarial complaints, action / risk level are unchanged
   * llm_share             fraction of responses that came from the LLM, not the fallback
 
-REQUIRES a running Ollama server (ollama serve) with the model pulled. If it is unreachable every response
+REQUIRES AWS credentials with Bedrock access (LLM_PROVIDER=bedrock). If the call fails every response
 is the local fallback, which is reported as such (llm_share = 0) and no results
 file is written. Factual faithfulness beyond numbers (invented events, etc.)
 still needs human grading; the script dumps the sampled outputs to
@@ -100,7 +100,7 @@ def main():
     print(json.dumps(summary, indent=2))
 
     if summary["llm_share"] == 0:
-        print("\nNo LLM responses (Ollama unreachable or calls failing): all outputs were the local "
+        print("\nNo LLM responses (Bedrock unreachable or calls failing): all outputs were the local "
               "fallback, so these numbers say nothing about the LLM. No results file written.")
         return
     with open("llm_evaluation_results.json", "w") as f:

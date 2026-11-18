@@ -11,7 +11,7 @@ LOW = {"risk_level": "low", "recommended_action": "auto_reply", "human_review_re
 
 
 class FakeLLM:
-    """Stands in for le._generate (the Ollama call)."""
+    """Stands in for le._generate (the Bedrock call)."""
 
     def __init__(self, text=None, exc=None):
         self.text, self.exc, self.prompt = text, exc, None
@@ -75,12 +75,20 @@ def test_api_failure_falls_back_and_stays_policy_correct(monkeypatch):
     assert out["human_review_required"] is False
 
 
-def test_ollama_unreachable_falls_back(monkeypatch):
-    monkeypatch.setattr(le, "OLLAMA_HOST", "http://127.0.0.1:9")  # nothing listens here
-    monkeypatch.setattr(le, "LLM_TIMEOUT_S", 2)
+def test_bedrock_failure_falls_back(monkeypatch):
+    monkeypatch.setattr(le, "LLM_PROVIDER", "bedrock")
+
+    def no_credentials(prompt, temperature):
+        raise RuntimeError("Unable to locate credentials")
+    monkeypatch.setattr(le, "_generate_bedrock", no_credentials)
     out = le.explain_decision({"complaint_text": "x", "model_outputs": HIGH})
     assert out["_source"] == "fallback"
     assert out["human_review_required"] is True
+
+
+def test_unknown_provider_falls_back(monkeypatch):
+    monkeypatch.setattr(le, "LLM_PROVIDER", "something-else")
+    assert le.explain_decision({"complaint_text": "x", "model_outputs": HIGH})["_source"] == "fallback"
 
 
 @pytest.mark.parametrize("bad", [good(reason="Low risk"), good(summary="  "), good(reason=""),

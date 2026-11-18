@@ -64,7 +64,7 @@ def decision_pipeline() -> None:
             rules = Custom("Review triggers\n(4 checks)", icon("rules", "!", RED))
         action = Custom("Action\nauto_reply\nmanual_review\nescalate", icon("act", "GO", GREY))
         with Cluster("Explanation only (cannot change the decision)"):
-            llm = Bedrock("LLM explainer\nOllama llama3.2 or\nBedrock Nova Lite")
+            llm = Bedrock("LLM explainer\nAmazon Bedrock\nNova Lite")
             val = Custom("Validators\nempty? contradicts?\ninvented numbers?", icon("val", "OK", VIOLET))
             fb = Custom("Local fallback\nexplanation", icon("fb", "FB", GREY))
         feedback >> classical >> calib
@@ -97,7 +97,7 @@ def release_path() -> None:
     with Diagram("", filename=str(OUT / "release_path"), show=False, direction="LR", graph_attr=GRAPH, node_attr=NODE, outformat="png"):
         gh = GithubActions("GitHub Actions\n(approved in the\nproduction environment)")
         with Cluster("Gates"):
-            tests = Codebuild("67 tests")
+            tests = Codebuild("68 tests")
             lint = Codebuild("cfn-lint")
         img = Docker("Build image\nlinux/amd64")
         ecr = ECR("ECR")

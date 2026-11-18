@@ -12,7 +12,7 @@ The training label is derived from the star rating (1-2 stars = high, 3 = medium
 | Classical ML | TF-IDF (1-2 grams) + age, positive-feedback count, division/department/class -> Logistic Regression | `Recommended IND` removed (leaks the label) |
 | Fine-tuned DistilBERT | Text classifier, carries ~90% of the blend | int8-compressed weights (60 MB); LSTM baseline dropped (blend weight 0) |
 | Decision layer | Blend calibrated probabilities, apply tuned thresholds, review triggers | `decision.py`, `decision_config.json` |
-| LLM (llama3.2 via Ollama locally, or Bedrock Nova Lite) | Explanation only | Cannot change level, action or review flag; bad output is rejected and replaced by a fallback |
+| LLM (Amazon Bedrock, Nova Lite) | Explanation only | Cannot change level, action or review flag; bad output is rejected and replaced by a fallback |
 | LSTM, CNN | **Not used** | LSTM is a comparison baseline; the CNN is a Fashion-MNIST demo that cannot score complaint photos |
 
 ## Intended use
@@ -45,7 +45,7 @@ The transformer provides the gain; the blend with the classical model adds only 
 - About 4 in 10 "high" flags are false alarms by design (recall-first).
 - Reviews differ from support tickets in style and length.
 - Bootstrap CIs and a 3-seed study of the transformer (macro-F1 0.666-0.682) are reported, but there is one random data split.
-- llama3.2 (3B) explanations: 6.7% end up as the local fallback after one retry (n = 45); faithfulness beyond numbers/risk level not human-graded.
+- Nova Lite explanations: 0 of 45 needed the local fallback in the live check; faithfulness beyond numbers/risk level is not human-graded and n is small.
 - Drift monitoring is in-process only (`GET /stats`); dependency versions are pinned and the pickled/Keras artifacts must be retrained if they change.
 - Fairness: subgroup metrics by age band and department are in the evaluation report (fairly even; Bottoms has lowest high recall, 0.60); no formal fairness test.
 

@@ -3,11 +3,9 @@
 # Build:
 #   docker build -t hybrid-risk-api .
 # Run (secrets such as API_KEY are supplied at runtime, never baked into the image).
-# LLM provider (see llm_explainer.py): locally use Ollama on the host:
-#   docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 \
-#       -e API_KEY=... hybrid-risk-api
-# In AWS use -e LLM_PROVIDER=bedrock with an IAM role. If the LLM is unreachable the
-# API still works and returns a local fallback explanation.
+# LLM provider (see llm_explainer.py): Amazon Bedrock via ambient AWS credentials / the task role
+# (LLM_PROVIDER=bedrock is the default). Use -e LLM_PROVIDER=none to skip the LLM. If the LLM is
+# unreachable the API still works and returns a local fallback explanation.
 
 FROM python:3.11-slim
 

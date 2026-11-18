@@ -1,7 +1,7 @@
 """
 LLM explanation layer.
 
-Wraps a local Ollama call (default model llama3.2) that turns the hybrid model's outputs into a structured
+Wraps an Amazon Bedrock call (Nova Lite by default) that turns the hybrid model's outputs into a structured
 business explanation. The LLM is an EXPLAINER only: the risk level, the
 recommended_action and the human-review flag are all decided deterministically
 upstream (decision.py) and re-imposed here after the call, so neither a model
@@ -10,11 +10,10 @@ mistake nor text injected into a complaint can change them.
 Security
 --------
 * Provider is chosen with LLM_PROVIDER:
-    - "ollama" (default): local Ollama server, no API key, no data leaves the machine.
-      OLLAMA_HOST (default http://localhost:11434), OLLAMA_MODEL (default llama3.2).
-    - "bedrock": Amazon Bedrock Converse API using the ambient AWS credentials / IAM
-      role (no key in code). BEDROCK_MODEL_ID (default us.amazon.nova-lite-v1:0).
+    - "bedrock" (default): Amazon Bedrock Converse API using the ambient AWS credentials /
+      IAM role (no key in code). BEDROCK_MODEL_ID (default us.amazon.nova-lite-v1:0).
     - "none": skip the LLM and always use the local fallback explanation.
+  Without AWS credentials a Bedrock call fails and the local fallback is used.
 * Complaint text is untrusted. It is truncated, stripped of our delimiter
   tags, and placed inside <complaint> tags that the prompt tells the model to
   treat strictly as data. As defence in depth, `recommended_action` and
@@ -26,14 +25,11 @@ Security
 import json
 import os
 import re
-import urllib.request
 
 from decision import ACTION_BY_RISK
 
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "bedrock").lower()
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
 LLM_ATTEMPT_TEMPERATURES = (0.0, 0.5)
 LLM_TIMEOUT_S = float(os.environ.get("LLM_TIMEOUT_S", "60"))
 MAX_COMPLAINT_CHARS = 2000
@@ -47,7 +43,7 @@ def _generate(prompt, temperature=0.0):
         return _generate_bedrock(prompt, temperature)
     if LLM_PROVIDER == "none":
         raise RuntimeError("LLM disabled (LLM_PROVIDER=none)")
-    return _generate_ollama(prompt, temperature)
+    raise RuntimeError(f"Unknown LLM_PROVIDER {LLM_PROVIDER!r} (use 'bedrock' or 'none')")
 
 
 _bedrock = None
@@ -71,22 +67,6 @@ def _generate_bedrock(prompt, temperature=0.0):
         inferenceConfig={"temperature": temperature, "maxTokens": 700},
     )
     return _extract_json(resp["output"]["message"]["content"][0]["text"])
-
-
-def _generate_ollama(prompt, temperature=0.0):
-    """Call Ollama's chat endpoint in JSON mode and return the model's text.
-    Raises on connection errors, timeouts or HTTP errors; the caller falls back."""
-    body = json.dumps({
-        "model": OLLAMA_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "format": "json",
-        "stream": False,
-        "options": {"temperature": temperature},
-    }).encode()
-    req = urllib.request.Request(f"{OLLAMA_HOST}/api/chat", data=body,
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=LLM_TIMEOUT_S) as resp:
-        return json.loads(resp.read())["message"]["content"]
 
 
 _TAG_RE = re.compile(r"</?\s*complaint\s*>", re.IGNORECASE)

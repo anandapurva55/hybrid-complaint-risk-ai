@@ -2,7 +2,7 @@
 Regenerate sample_outputs.json by running every sample in sample_inputs.json
 through the pipeline. Each record notes whether its explanation came from the
 LLM or the local fallback (`_meta.explanation_source`); without a
-a reachable Ollama server every explanation is a fallback and is labelled as such.
+working Bedrock access every explanation is a fallback and is labelled as such.
 
     python generate_sample_outputs.py
 """

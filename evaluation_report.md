@@ -105,7 +105,7 @@ Performance is fairly even across age bands. Bottoms has the lowest high recall 
 Not part of the decision and not evaluated here (Fashion-MNIST, 10 clothing categories, accuracy 0.83 on that task). No public dataset pairs complaint photos with outcome labels (a search found only factory fabric-defect sets and image+complaint-text sets without outcomes), so no honest image signal could be built.
 
 ## 6. The LLM layer
-Local llama3.2 (3B) through Ollama, or Amazon Bedrock (Nova Lite) when `LLM_PROVIDER=bedrock`. It only explains; risk level, `recommended_action` and `human_review_required` come from the deterministic layer and are re-imposed after the call. Evaluated live ([`evaluate_llm.py`](evaluate_llm.py)) on 45 stratified test rows plus 3 injection strings:
+Amazon Bedrock, Nova Lite (`us.amazon.nova-lite-v1:0`). It only explains; risk level, `recommended_action` and `human_review_required` come from the deterministic layer and are re-imposed after the call. Evaluated live ([`evaluate_llm.py`](evaluate_llm.py)) on 45 stratified test rows plus 3 injection strings:
 
 | Check | Result |
 |---|---|
@@ -113,9 +113,9 @@ Local llama3.2 (3B) through Ollama, or Amazon Bedrock (Nova Lite) when `LLM_PROV
 | Non-empty and consistent with the decided risk level | 100% |
 | Quoted numbers match `model_outputs` | 100% |
 | Injection suite: action unchanged | 3 / 3 |
-| Responses that came from the LLM (rest rejected twice -> fallback) | 93% |
+| Responses that came from the LLM (rest rejected twice -> fallback) | 100% (45 of 45) |
 
-The 100% rows are *after* the validators in `llm_explainer.py` (empty, contradictory or numerically invented output is rejected), so they are guarantees by construction. The honest quality signal is the rejection rate (20% on the first attempt, 6.7% after one automatic retry at a warmer temperature): raw llama3.2 output wrote `reason: "Low risk"` for a high-risk case, returned empty fields, and invented figures such as "863% probability". Faithfulness beyond numbers and risk level (e.g. an invented product defect) is not checked automatically and has not been human-graded. n = 45 is small. The Bedrock path was smoke-tested once, not evaluated.
+The pass rates are measured *after* the validators in `llm_explainer.py` (empty, contradictory or numerically invented output is rejected and retried once, then replaced by a local fallback), so they hold by construction; the quality signal is how often the validators had to step in, which was never on this run (0 of 45 fallbacks here, though one of the 8 bundled examples did fall back in another run, so the rate is low but not zero). Early development with a small 3B-parameter model showed why the validators exist: it wrote `reason: "Low risk"` for a high-risk case, returned empty fields and invented figures such as "863% probability", and about 7% of its answers were still rejected after the retry. Nova Lite did not show these failures here, but n = 45 is small and faithfulness beyond numbers and risk tier (for example an invented product defect) is not checked automatically or human-graded.
 
 ## 7. Remaining limitations
 1. **Proxy label.** Largest limitation; only real escalation outcomes fix it. Reviews are also not support tickets.
