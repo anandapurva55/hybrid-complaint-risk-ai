@@ -75,25 +75,26 @@ def decision_pipeline() -> None:
 
 
 def aws_architecture() -> None:
+    small = {"width": "1.05", "height": "1.8"}   # smaller icons than the library default, for a tighter picture
     with Diagram("", filename=str(OUT / "aws_architecture"), show=False, direction="LR",
-                 graph_attr=GRAPH | {"ranksep": "0.8", "nodesep": "0.45", "splines": "spline"}, node_attr=NODE, outformat="png"):
-        client = Users("API client")
+                 graph_attr=GRAPH | {"ranksep": "0.55", "nodesep": "0.3", "pad": "0.2", "fontsize": "13", "splines": "spline"},
+                 node_attr=NODE, outformat="png"):
+        client = Users("API client", **small)
         with Cluster("Edge"):
-            waf = WAF("AWS WAF\nrate limit per IP")
-            cdn = CloudFront("CloudFront\nHTTPS")
-        with Cluster("Serving (ECS on Fargate, autoscaling 1 to 3 tasks)"):
-            alb = ALB("ALB\nonly CloudFront IPs")
-            api = Fargate("FastAPI container\nclassical + DistilBERT +\ndecision layer")
-        with Cluster("Used by the task"):
-            bedrock = Bedrock("Bedrock\nNova Lite")
-            secret = SecretsManager("Secrets Manager\nAPI key")
-            logs = Cloudwatch("CloudWatch\nmetrics + alarms")
-        gha = GithubActions("GitHub Actions\nOIDC deploy")
-        client >> Edge(label="HTTPS + X-API-Key") >> waf >> cdn >> alb >> api
-        gha >> Edge(style="dashed", label="CloudFormation") >> api
+            waf = WAF("AWS WAF\nrate limit", **small)
+            cdn = CloudFront("CloudFront\nHTTPS", **small)
+        with Cluster("ECS on Fargate (1 to 3 tasks)"):
+            alb = ALB("ALB\nCloudFront only", **small)
+            api = Fargate("FastAPI container\nmodels + decision", **small)
+        bedrock = Bedrock("Bedrock\nNova Lite", **small)
+        logs = Cloudwatch("CloudWatch\nmetrics, alarms", **small)
+        secret = SecretsManager("Secrets Manager\nAPI key", **small)
+        gha = GithubActions("GitHub Actions\nOIDC deploy", **small)
+        client >> Edge(label="HTTPS + API key") >> waf >> cdn >> alb >> api
         api >> Edge(label="one model only") >> bedrock
+        api >> Edge(label="metrics") >> logs
         secret >> Edge(style="dashed", label="at start") >> api
-        api >> Edge(label="every prediction") >> logs
+        gha >> Edge(style="dashed", label="CloudFormation") >> api
 
 
 def release_path() -> None:

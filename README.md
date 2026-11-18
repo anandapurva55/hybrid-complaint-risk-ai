@@ -326,7 +326,7 @@ python docs/diagrams/generate.py             # redraw the diagrams in this READM
 
 ## AWS architecture
 
-![AWS architecture](docs/images/aws_architecture.png)
+<p align="center"><img src="docs/images/aws_architecture.png" alt="AWS architecture" width="720"></p>
 
 | Layer | Service | Role |
 |---|---|---|
