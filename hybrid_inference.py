@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 
 from decision import action_for, assess, final_score, load_config, review_reasons
-from llm_explainer import explain_with_gemini
+from llm_explainer import explain_decision
 from risk_common import CLASSES, FEATURE_COLUMNS, proba_to_score, reorder_proba
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -122,7 +122,7 @@ def predict_hybrid(input_data, explain=True):
     }
 
     if explain:
-        explanation = explain_with_gemini({"complaint_text": text, "model_outputs": model_outputs})
+        explanation = explain_decision({"complaint_text": text, "model_outputs": model_outputs})
     else:
         explanation = None
 

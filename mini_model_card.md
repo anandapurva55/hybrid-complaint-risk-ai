@@ -12,7 +12,7 @@ The training label is derived from the star rating (1-2 stars = high, 3 = medium
 | Classical ML | TF-IDF (1-2 grams) + age, positive-feedback count, division/department/class -> Logistic Regression | `Recommended IND` removed (leaks the label) |
 | RNN/LSTM | Text-only classifier | Full train split, early stopping |
 | Decision layer | Blend calibrated probabilities, apply tuned thresholds, review triggers | `decision.py`, `decision_config.json` |
-| LLM (Gemini) | Explanation only | Cannot change level, action or review flag |
+| LLM (llama3.2 via Ollama, local) | Explanation only | Cannot change level, action or review flag; bad output is rejected and replaced by a fallback |
 | CNN | **Not used** | Fashion-MNIST demo only; cannot score complaint photos |
 
 ## Intended use
@@ -45,7 +45,7 @@ Hybrid beats classical-alone only marginally (+0.003 macro-F1, within noise).
 - About half of "high" flags are false alarms by design (recall-first).
 - Reviews differ from support tickets in style and length.
 - One random split, no confidence intervals; no cross-validation.
-- LLM output quality is not yet evaluated against the live API (`evaluate_llm.py` needs a key).
+- llama3.2 (3B) explanations: ~18% of raw responses rejected by validators (n = 45); faithfulness beyond numbers/risk level not human-graded.
 - No drift monitoring; dependency versions are pinned and the pickled/Keras artifacts must be retrained if they change.
 - Fairness: only a few demographic-adjacent features (age); no subgroup analysis has been done.
 

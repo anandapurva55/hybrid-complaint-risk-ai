@@ -1,7 +1,7 @@
 """
 LLM explanation layer.
 
-Wraps a Gemini call that turns the hybrid model's outputs into a structured
+Wraps a local Ollama call (default model llama3.2) that turns the hybrid model's outputs into a structured
 business explanation. The LLM is an EXPLAINER only: the risk level, the
 recommended_action and the human-review flag are all decided deterministically
 upstream (decision.py) and re-imposed here after the call, so neither a model
@@ -9,7 +9,9 @@ mistake nor text injected into a complaint can change them.
 
 Security
 --------
-* The API key is read only from GEMINI_API_KEY (env var or untracked .env).
+* The LLM runs locally through Ollama: no API key and no data leaves the machine.
+  Configure with OLLAMA_HOST (default http://localhost:11434) and OLLAMA_MODEL
+  (default llama3.2).
 * Complaint text is untrusted. It is truncated, stripped of our delimiter
   tags, and placed inside <complaint> tags that the prompt tells the model to
   treat strictly as data. As defence in depth, `recommended_action` and
@@ -21,38 +23,32 @@ Security
 import json
 import os
 import re
-
-from dotenv import load_dotenv
+import urllib.request
 
 from decision import ACTION_BY_RISK
 
-load_dotenv()
-
-GEMINI_MODEL = "gemini-2.5-flash"
-LLM_TIMEOUT_MS = 15_000
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+LLM_TIMEOUT_S = float(os.environ.get("LLM_TIMEOUT_S", "60"))
 MAX_COMPLAINT_CHARS = 2000
 MAX_FIELD_CHARS = 1500
 
 REQUIRED_FIELDS = ["summary", "recommended_action", "reason", "human_review_required", "risk_notes"]
 
-_client = None
-
-
-def _get_client():
-    """Lazily creates the Gemini client. Raises if no API key is configured;
-    callers catch this and fall back gracefully."""
-    global _client
-    if _client is None:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "GEMINI_API_KEY is not set. Export it as an environment variable, "
-                "or add it to a local .env file. Never hard-code it in source."
-            )
-        from google import genai
-        from google.genai import types
-        _client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=LLM_TIMEOUT_MS))
-    return _client
+def _generate(prompt):
+    """Call Ollama's chat endpoint in JSON mode and return the model's text.
+    Raises on connection errors, timeouts or HTTP errors; the caller falls back."""
+    body = json.dumps({
+        "model": OLLAMA_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "format": "json",
+        "stream": False,
+        "options": {"temperature": 0},
+    }).encode()
+    req = urllib.request.Request(f"{OLLAMA_HOST}/api/chat", data=body,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=LLM_TIMEOUT_S) as resp:
+        return json.loads(resp.read())["message"]["content"]
 
 
 _TAG_RE = re.compile(r"</?\s*complaint\s*>", re.IGNORECASE)
@@ -69,6 +65,11 @@ def _build_prompt(input_payload):
     outputs = json.dumps(input_payload.get("model_outputs", {}), indent=2)
     return f"""You are a business AI decision assistant. You EXPLAIN a decision that was
 already made by deterministic models; you do not make or change it.
+
+The decision for this feedback is already final: risk_level = {input_payload.get("model_outputs", {}).get("risk_level")}.
+Write `summary` (1-2 sentences about what the customer says) and `reason` (1-2 sentences
+explaining why the models rated it at that risk level, using the probabilities). Both must be
+non-empty and must be consistent with that risk_level.
 
 Rules:
 - Return only valid JSON.
@@ -92,6 +93,34 @@ human_review_required (boolean), risk_notes (array of strings)
 """
 
 
+_LEVEL_RE = re.compile(r"\b(low|medium|high)[- ](?:level )?(?:risk|dissatisfaction)\b", re.IGNORECASE)
+
+
+def _contradicts_decision(explanation, model_outputs):
+    """True if the explanation states a risk level different from the decision.
+    Small local models sometimes write e.g. "Low risk" for a high-risk case."""
+    level = model_outputs.get("risk_level")
+    text = " ".join([explanation["summary"], explanation["reason"], *map(str, explanation["risk_notes"])])
+    return any(m.lower() != level for m in _LEVEL_RE.findall(text))
+
+
+_DEC_RE = re.compile(r"\d+\.\d+")
+_PCT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+
+
+def numbers_grounded(explanation, model_outputs):
+    """True if every percentage / decimal the explanation quotes matches a value in
+    model_outputs (as a 0-1 decimal or a percentage). Catches invented figures."""
+    text = " ".join([explanation["summary"], explanation["reason"], *map(str, explanation["risk_notes"])])
+    flat = json.dumps(model_outputs)
+    vals = [float(x) for x in _DEC_RE.findall(flat)] + list((model_outputs.get("probabilities") or {}).values())
+    dec_ok = {round(v, 2) for v in vals} | {round(v, 3) for v in vals}
+    pct_ok = {round(v * 100, 1) for v in vals} | {float(round(v * 100)) for v in vals}
+    pct_quoted = {round(float(p), 1) for p in _PCT_RE.findall(text)}
+    dec_quoted = {float(d) for d in _DEC_RE.findall(_PCT_RE.sub(" ", text))}
+    return pct_quoted <= pct_ok and all(round(d, 3) in dec_ok or round(d, 2) in dec_ok for d in dec_quoted)
+
+
 def _clip(value):
     return value[:MAX_FIELD_CHARS] if isinstance(value, str) else value
 
@@ -108,6 +137,10 @@ def _normalise(explanation, model_outputs):
     if not all(isinstance(explanation[f], str) for f in ("summary", "reason")):
         return None
 
+    if not explanation["summary"].strip() or not explanation["reason"].strip():
+        return None  # empty explanations are useless; use the fallback
+    if _contradicts_decision(explanation, model_outputs) or not numbers_grounded(explanation, model_outputs):
+        return None
     out = {
         "summary": _clip(explanation["summary"]),
         "reason": _clip(explanation["reason"]),
@@ -147,7 +180,7 @@ def _fallback_explanation(model_outputs, reason):
     return _enforce_policy(explanation, model_outputs)
 
 
-def explain_with_gemini(input_payload):
+def explain_decision(input_payload):
     """Generate a structured explanation for a hybrid prediction.
 
     `input_payload`: {"complaint_text": "...", "model_outputs": {...}}.
@@ -157,13 +190,7 @@ def explain_with_gemini(input_payload):
     """
     model_outputs = input_payload.get("model_outputs", {})
     try:
-        client = _get_client()
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=_build_prompt(input_payload),
-            config={"response_mime_type": "application/json"},
-        )
-        parsed = json.loads(response.text)
+        parsed = json.loads(_generate(_build_prompt(input_payload)))
     except Exception as exc:
         result = _fallback_explanation(model_outputs, reason=str(exc))
         result["_source"] = "fallback"

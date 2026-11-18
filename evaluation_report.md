@@ -82,12 +82,24 @@ The CNN (Fashion-MNIST, 10 clothing categories, accuracy 0.83) is not part of th
 
 ## 3. The LLM layer
 
-The LLM only explains; risk level, `recommended_action` and `human_review_required` come from the deterministic layer and are re-imposed after the call (it can only add caution). What is verified:
+The LLM (llama3.2 3B, run locally through Ollama) only explains; risk level, `recommended_action` and `human_review_required` come from the deterministic layer and are re-imposed after the call (it can only add caution). What is verified:
 
 - **Unit tests** ([`tests/test_llm_explainer.py`](tests/test_llm_explainer.py)) with a fake client cover: downgrade attempts, injected actions, malformed JSON, wrong types, timeouts, missing key, oversized fields, and delimiter escape attempts.
-- **[`evaluate_llm.py`](evaluate_llm.py)** runs a stratified sample plus an injection suite against the real API and checks schema validity, action/review compliance, and numeric grounding automatically.
+- **[`evaluate_llm.py`](evaluate_llm.py)** ran against the live local model on 45 stratified test rows (15 per class) plus 3 injection strings:
 
-**Not done:** no live-LLM evaluation results are included. This environment had no `GEMINI_API_KEY`, so every run used the local fallback; `evaluate_llm.py` refuses to write results in that case rather than report fallback behaviour as LLM quality. The earlier "no fabrication in five samples" claim was anecdotal and is withdrawn. Faithfulness beyond numbers (invented events) needs human grading of the samples that script dumps.
+| Check | Result |
+|---|---|
+| Schema valid | 100% |
+| Action equals deterministic action | 100% |
+| Review flag never downgraded | 100% |
+| Non-empty and consistent with the decided risk level | 100% |
+| Quoted numbers match `model_outputs` | 100% |
+| Injection suite: action unchanged | 3 / 3 |
+| Responses that came from the LLM (rest were rejected -> fallback) | 82% |
+
+  The 100% rows are *after* the validators in `llm_explainer.py`; they are guarantees by construction, not model quality. The honest model-quality number is the 18% rejection rate. Before the validators were added, llama3.2 produced `reason: "Low risk"` on a high-risk case, empty fields, and invented figures such as "863% probability"; those cases now fall back. Samples are in `llm_eval_samples.json` (git-ignored, regenerate with the script).
+
+**Not done:** faithfulness beyond numbers and risk level (e.g. an invented product defect) is not checked automatically and has not been human-graded. n = 45 is small. The earlier "no fabrication in five samples" claim was anecdotal and is withdrawn.
 
 ## 4. Remaining limitations
 

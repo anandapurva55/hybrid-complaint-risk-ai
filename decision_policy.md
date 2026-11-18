@@ -56,10 +56,11 @@ Allowed: summarise, explain in business language, add notes, and be *more* cauti
 Not allowed, and enforced in code after the call:
 - changing scores, `risk_level`, or `recommended_action` (overwritten from the deterministic assessment);
 - lowering `human_review_required` (it is OR-ed with the policy value);
-- crashing the pipeline: failures, timeouts (15 s) and malformed or mistyped JSON fall back to a local explanation that is still policy-correct.
+- crashing the pipeline: Ollama being down, timeouts (60 s) and malformed or mistyped JSON fall back to a local explanation that is still policy-correct;
+- being accepted when it is useless or wrong: explanations that are empty, state a risk level different from the decision, or quote numbers not in `model_outputs` are rejected and replaced by the fallback.
 
 Complaint text is untrusted: it is length-capped, our delimiter tag is stripped, it is wrapped in `<complaint>` tags the prompt declares to be data, and free-text outputs are length-capped. Injection cannot change the action or review flag because those never come from the LLM.
 
-## 6. Secrets
+## 6. Secrets and data
 
-`GEMINI_API_KEY` comes only from the environment / untracked `.env`. If `API_KEY` is set, `/predict` requires a matching `X-API-Key` header.
+The LLM runs locally through Ollama, so no API key is needed and no data leaves the machine. If `API_KEY` is set, `/predict` requires a matching `X-API-Key` header.

@@ -4,7 +4,7 @@ A triage pipeline that reads customer feedback, estimates how dissatisfied the c
 
 ## What this is, and is not
 
-- **It is** a worked example of a hybrid system: two trained text models, a calibrated probability-based decision layer, deterministic review rules, and an LLM that explains but cannot decide.
+- **It is** a worked example of a hybrid system: two trained text models, a calibrated probability-based decision layer, deterministic review rules, and a local LLM (Ollama) that explains but cannot decide.
 - **It is not** an escalation predictor. The dataset ([Women's E-Commerce Clothing Reviews](Womens%20Clothing%20E-Commerce%20Reviews.csv)) holds product *reviews*, not complaints, and has no escalation outcomes. The label is a **proxy** derived from star rating: 1-2 stars = `high`, 3 = `medium`, 4-5 = `low`. All metrics measure recovery of that rating-derived tier. Treat "risk" as "dissatisfaction", and validate against real escalation data before any real-world use. (Variable names such as `risk_level` are kept for continuity.)
 
 ## Architecture
@@ -30,7 +30,8 @@ A triage pipeline that reads customer feedback, estimates how dissatisfied the c
                 ▼
    action: escalate_immediately | manual_review | auto_reply   (deterministic)
                 ▼
-   Gemini explanation (summary, reason, notes)  -- cannot change level, action or review flag
+   local LLM (Ollama, llama3.2) explanation  -- cannot change level, action or review flag;
+   output is rejected -> fallback if empty, contradictory or quoting invented numbers
 ```
 
 ### Why the CNN is not in the decision
@@ -51,7 +52,7 @@ Full tables and caveats: [evaluation_report.md](evaluation_report.md).
 - Hybrid vs classical alone: only +0.003 macro-F1 / +0.003 AUC (within noise); the RNN adds a small signal.
 - High precision is 0.50: about half of "high" flags are false alarms, by design (recall-first).
 - Removing the leaky `Recommended IND` feature explains why headline metrics are lower than the first version's (0.845 / 0.666): that gap was ~0.05 macro-F1 of label leakage.
-- The LLM layer is tested with fakes and an injection suite; a live-API evaluation script exists but has **not** been run (no key was available). See the report.
+- The LLM layer (llama3.2 via Ollama) was evaluated live on 45 test rows plus an injection suite: 100% schema-valid, 100% policy-compliant, 0 injection successes. 18% of raw responses were rejected by the validators (empty, contradicting the decision, or quoting invented numbers) and replaced by a fallback. See the report.
 
 ## Decision rules
 
@@ -64,10 +65,11 @@ Python 3.11.
 ```bash
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt     # requirements.txt alone is enough to serve
-cp .env.example .env                    # optional: add GEMINI_API_KEY (and API_KEY to protect /predict)
+ollama pull llama3.2                    # the explanation LLM (needs `ollama serve` running)
+cp .env.example .env                    # optional: OLLAMA_HOST / OLLAMA_MODEL / API_KEY
 ```
 
-Without `GEMINI_API_KEY` everything still works; explanations come from a local fallback and are labelled `_meta.explanation_source = "fallback"`.
+If Ollama is not running everything still works; explanations come from a local fallback and are labelled `_meta.explanation_source = "fallback"`.
 
 ## Usage
 
@@ -79,7 +81,7 @@ python tune_decision.py          # calibration + blend weight + thresholds, from
 python evaluate_hybrid.py        # test-split evaluation -> evaluation_results.json
 python hybrid_inference.py       # run the bundled samples
 python generate_sample_outputs.py
-python evaluate_llm.py --n 60    # needs GEMINI_API_KEY
+python evaluate_llm.py --n 45    # needs Ollama running
 python -m pytest                 # unit tests + end-to-end smoke tests
 uvicorn app:app --reload         # HTTP API
 ```
@@ -92,7 +94,7 @@ curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" \
        "class_name":"Dresses"}'
 ```
 
-Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 --env-file .env hybrid-risk-api`. The rebuilt image was built and smoke-tested locally (health, API-key auth, a prediction); it has not been redeployed to AWS.
+Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 hybrid-risk-api`. The rebuilt image was built and smoke-tested locally (health, API-key auth, a prediction); it has not been redeployed to AWS.
 
 ## Repository map
 
@@ -101,7 +103,7 @@ Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 --
 | `risk_common.py` | constants, label proxy, probability ordering |
 | `decision.py`, `decision_config.json` | pure decision logic and its tuned parameters |
 | `hybrid_inference.py` | model loading, end-to-end `predict_hybrid` |
-| `llm_explainer.py` | Gemini explanation with sanitising, timeout, policy re-imposition, fallback |
+| `llm_explainer.py` | Ollama explanation with sanitising, timeout, policy re-imposition, output validators, fallback |
 | `app.py` | FastAPI wrapper (validation, optional API key, no internal error leakage) |
 | `make_splits.py`, `train_*.py`, `tune_decision.py`, `evaluate_*.py` | reproducible pipeline |
 | `tests/`, `.github/workflows/ci.yml` | tests and CI |
@@ -113,5 +115,5 @@ Container: `docker build -t hybrid-risk-api . && docker run --rm -p 8000:8000 --
 
 - Proxy label, unvalidated against real escalations (the main limitation).
 - Medium class is weak (F1 ~0.35); one random split, no confidence intervals.
-- Live-LLM evaluation not run (no API key available); AWS deployment not redone after the redesign (the image itself builds and serves locally).
+- llama3.2 (3B) writes weak explanations about 1 time in 5 (rejected and replaced by the fallback); faithfulness beyond numbers and risk level has not been human-graded. AWS deployment not redone after the redesign (the image builds and serves locally), and App Runner cannot reach a local Ollama; see the AWS notes.
 - No drift monitoring, no built-in rate limiting.

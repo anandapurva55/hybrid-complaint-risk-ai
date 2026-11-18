@@ -2,14 +2,11 @@
 #
 # Build:
 #   docker build -t hybrid-risk-api .
-# Run (the key is supplied at runtime, never baked into the image; see the
-# SECURITY note below):
-#   docker run --rm -p 8000:8000 --env-file .env hybrid-risk-api
-#
-# SECURITY: GEMINI_API_KEY must be supplied at run time, through -e or
-# --env-file, and never COPYed or hard-coded into the image. Anyone who can
-# pull or inspect the image could otherwise extract it from a layer.
-# .dockerignore excludes .env from the build context for the same reason.
+# Run (secrets such as API_KEY are supplied at runtime, never baked into the image).
+# The LLM runs in a separate Ollama server; from the container reach the host's with:
+#   docker run --rm -p 8000:8000 -e OLLAMA_HOST=http://host.docker.internal:11434 \
+#       -e API_KEY=... hybrid-risk-api
+# If Ollama is unreachable the API still works and returns a local fallback explanation.
 
 FROM python:3.11-slim
 

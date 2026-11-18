@@ -17,17 +17,15 @@
       "review_reasons": []
     },
     "llm_explanation": {
-      "summary": "Automated explanation unavailable. The models assessed this feedback as low risk (final_score=0.008).",
-      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: GEMINI_API_KEY is not set. Export it as an environment variable, or add it to a local .env file. Never hard-code it in source.",
-      "risk_notes": [
-        "LLM explanation unavailable."
-      ],
+      "summary": "Customer expresses satisfaction with the sweater, stating it fits true to size and will buy more from the brand.",
+      "reason": "The customer's positive review and lack of complaints about the product led to a low risk assessment.",
+      "risk_notes": [],
       "human_review_required": false,
       "recommended_action": "auto_reply"
     },
     "_meta": {
       "cnn_used": false,
-      "explanation_source": "fallback"
+      "explanation_source": "llm"
     }
   },
   {
@@ -48,17 +46,15 @@
       "review_reasons": []
     },
     "llm_explanation": {
-      "summary": "Automated explanation unavailable. The models assessed this feedback as high risk (final_score=0.742).",
-      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: GEMINI_API_KEY is not set. Export it as an environment variable, or add it to a local .env file. Never hard-code it in source.",
-      "risk_notes": [
-        "LLM explanation unavailable."
-      ],
+      "summary": "Customer is disappointed with the quality of the top, citing small size and loose stitching after a single wash.",
+      "reason": "The model rated the risk level as high due to the high probability (0.578) of the product failing to meet expectations, as indicated by the customer's complaint.",
+      "risk_notes": [],
       "human_review_required": true,
       "recommended_action": "escalate_immediately"
     },
     "_meta": {
       "cnn_used": false,
-      "explanation_source": "fallback"
+      "explanation_source": "llm"
     }
   },
   {
@@ -82,18 +78,18 @@
       ]
     },
     "llm_explanation": {
-      "summary": "Automated explanation unavailable. The models assessed this feedback as high risk (final_score=0.516).",
-      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: GEMINI_API_KEY is not set. Export it as an environment variable, or add it to a local .env file. Never hard-code it in source.",
+      "summary": "Customer reports receiving a dress with a torn seam and a strong chemical smell, despite emailing support twice with no response.",
+      "reason": "The models rated the risk level as high due to the high probability (0.372) of the issue being a quality control problem (high risk) and the low response from support (low confidence).",
       "risk_notes": [
-        "LLM explanation unavailable.",
-        "Review triggers: conflicted, low_confidence."
+        "conflicted",
+        "low_confidence"
       ],
       "human_review_required": true,
       "recommended_action": "escalate_immediately"
     },
     "_meta": {
       "cnn_used": false,
-      "explanation_source": "fallback"
+      "explanation_source": "llm"
     }
   },
   {
@@ -114,17 +110,15 @@
       "review_reasons": []
     },
     "llm_explanation": {
-      "summary": "Automated explanation unavailable. The models assessed this feedback as low risk (final_score=0.062).",
-      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: GEMINI_API_KEY is not set. Export it as an environment variable, or add it to a local .env file. Never hard-code it in source.",
-      "risk_notes": [
-        "LLM explanation unavailable."
-      ],
+      "summary": "Customer is generally satisfied with the jeans, mentioning a minor issue with the wash color.",
+      "reason": "The model rated the risk level as low because the customer's complaints are minor and do not indicate a significant issue with the product.",
+      "risk_notes": [],
       "human_review_required": false,
       "recommended_action": "auto_reply"
     },
     "_meta": {
       "cnn_used": false,
-      "explanation_source": "fallback"
+      "explanation_source": "llm"
     }
   },
   {
@@ -147,18 +141,17 @@
       ]
     },
     "llm_explanation": {
-      "summary": "Automated explanation unavailable. The models assessed this feedback as high risk (final_score=0.415).",
-      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: GEMINI_API_KEY is not set. Export it as an environment variable, or add it to a local .env file. Never hard-code it in source.",
+      "summary": "Customer received wrong size and broken zipper in third order, considering not shopping again.",
+      "reason": "The models rated the risk level as high due to the high probability (0.317) of future issues with orders, as indicated by the high scores from both the classical and RNN models (0.346 and 0.577 respectively).",
       "risk_notes": [
-        "LLM explanation unavailable.",
-        "Review triggers: conflicted."
+        "conflicted"
       ],
       "human_review_required": true,
       "recommended_action": "escalate_immediately"
     },
     "_meta": {
       "cnn_used": false,
-      "explanation_source": "fallback"
+      "explanation_source": "llm"
     }
   },
   {
@@ -179,17 +172,15 @@
       "review_reasons": []
     },
     "llm_explanation": {
-      "summary": "Automated explanation unavailable. The models assessed this feedback as low risk (final_score=0.022).",
-      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: GEMINI_API_KEY is not set. Export it as an environment variable, or add it to a local .env file. Never hard-code it in source.",
-      "risk_notes": [
-        "LLM explanation unavailable."
-      ],
+      "summary": "Customer is extremely satisfied with the dress, mentioning it was of great quality and arrived quickly.",
+      "reason": "The model rated the risk level as low because the customer's positive feedback and the low probability of a negative outcome (0.969) support this decision.",
+      "risk_notes": [],
       "human_review_required": false,
       "recommended_action": "auto_reply"
     },
     "_meta": {
       "cnn_used": false,
-      "explanation_source": "fallback"
+      "explanation_source": "llm"
     }
   },
   {
@@ -213,7 +204,7 @@
     },
     "llm_explanation": {
       "summary": "Automated explanation unavailable. The models assessed this feedback as medium risk (final_score=0.342).",
-      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: GEMINI_API_KEY is not set. Export it as an environment variable, or add it to a local .env file. Never hard-code it in source.",
+      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: LLM response malformed",
       "risk_notes": [
         "LLM explanation unavailable.",
         "Review triggers: short_text."
@@ -247,18 +238,18 @@
       ]
     },
     "llm_explanation": {
-      "summary": "Automated explanation unavailable. The models assessed this feedback as high risk (final_score=0.464).",
-      "reason": "Fallback explanation generated locally; see model_outputs for the underlying probabilities. LLM issue: GEMINI_API_KEY is not set. Export it as an environment variable, or add it to a local .env file. Never hard-code it in source.",
+      "summary": "Customer claims the jacket fell apart after one wear and had poor customer service.",
+      "reason": "The models rated the risk level as high due to the customer's low confidence (0.236) in the product's quality and the high probability (0.347) of the issue being a defect (high risk).",
       "risk_notes": [
-        "LLM explanation unavailable.",
-        "Review triggers: conflicted, low_confidence."
+        "conflicted",
+        "low_confidence"
       ],
       "human_review_required": true,
       "recommended_action": "escalate_immediately"
     },
     "_meta": {
       "cnn_used": false,
-      "explanation_source": "fallback"
+      "explanation_source": "llm"
     }
   }
 ]
