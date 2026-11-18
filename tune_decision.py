@@ -2,7 +2,7 @@
 Fit calibration temperatures and tune the blend weight and decision thresholds
 on the VALIDATION split only, then write decision_config.json.
 
-Selection rules (documented in decision_policy.md):
+Selection rules (explained in the README, "The calibrated decision layer"):
   1. blend weight w_classical = the weight minimising validation log-loss of the
      blended probabilities (a smooth criterion; macro-F1 under a recall
      constraint is too noisy to pick a weight);
