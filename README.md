@@ -19,7 +19,7 @@ Built with: **Python** 3.11; **scikit-learn** with **TF-IDF** and **Logistic Reg
 
 A system that reads a piece of customer feedback and answers three practical questions: **how unhappy is this customer** (low, medium or high), **what should happen next** (reply automatically, send to a person, or escalate), and **why**. A **fine-tuned DistilBERT** model estimates the tier, a small deterministic layer turns its probabilities into a decision, and a language model writes a plain-English explanation. The language model can describe the decision, never change it.
 
-| 0.68 | 0.69 | 346 of 355 | 71.1% | 29% | 93 |
+| 0.68 | 0.69 | 346 of 355 | 71.1% | 29% | 97 |
 |:---:|:---:|:---:|:---:|:---:|:---:|
 | Recall on the "high" tier (the model's own call) | Macro-F1 (95% CI 0.67 to 0.71) | Truly-high cases that reach a person (240 escalated as high, 106 sent to review as medium) | Feedback answered automatically (97.1% of them truly low) | Feedback sent to human review | Automated tests, plus 1 known-limitation check |
 
@@ -89,7 +89,7 @@ pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev]"  
 
 python -m hybrid_risk "Oh great, another top that fell apart"   # triage one piece of feedback
 python -m hybrid_risk.hybrid_inference   # run the 8 bundled examples (explanations need AWS credentials with Bedrock access)
-python -m pytest                  # 93 tests plus 1 known-limitation check
+python -m pytest                  # 97 tests plus 1 known-limitation check
 uvicorn hybrid_risk.app:app --reload     # HTTP API on http://127.0.0.1:8000
 ```
 
@@ -297,13 +297,15 @@ Performance is fairly even across age bands (age is audited here but is not a mo
 |---|---|---|
 | Schema valid, action equals policy, review never downgraded, consistent with the decided tier, quoted numbers match | 100% | 100% |
 | Injection suite: action unchanged | 3 / 3 | n/a |
-| Responses that came from the LLM (rest rejected twice, then fallback) | 98% | n/a |
-| Latency, p50 / p95 | 1.31 s / 2.23 s | under 1 ms |
+| Responses that came from the LLM (rest rejected twice, then fallback) | 100% | n/a |
+| Latency, p50 / p95 | 1.14 s / 1.62 s | under 1 ms |
 | Specificity: share of the explanation's content words that come from the complaint | 0.23 | 0.01 |
-| LLM-judge proxy (Claude Sonnet, scores 1 to 5): faithful / useful / clear | 3.98 / 3.47 / 3.75 | 3.56 / 2.74 / 3.45 |
-| LLM-judge proxy: which explanation it would show a reviewer | 70% | 23% (tie 7%) |
+| Summary just repeats the complaint, short reviews / real reviews (earlier prompt: 68% / 7%) | 0% / 0% | n/a |
+| Vague wording ("moderate concern", "significant issue"), short reviews / real reviews (earlier prompt: 21% / 16%) | 4% / 4% | n/a |
+| LLM-judge proxy (Claude Sonnet, scores 1 to 5): faithful / useful / clear | 4.52 / 3.82 / 4.1 | 3.59 / 2.62 / 3.4 |
+| LLM-judge proxy: which explanation it would show a reviewer | 85% | 9% (tie 6%) |
 
-The pass rates hold by construction (the validators reject bad output first), and the templated baseline passes every automatic check too, so those checks cannot tell the two apart. Two further signals: the **LLM** adds complaint-specific wording (overlap 0.23 against 0.01), and a Claude judge, scoring each pair twice with the order swapped, prefers the **LLM** explanation (70% against 23%) and scores it higher on usefulness; on faithfulness the two were roughly level (the **LLM** scored a little lower in an earlier run and higher in this one). That judge is a **proxy, not human evidence**: it agreed with itself across the two orders only 82% of the time. [`results/explanation_review_sheet.md`](results/explanation_review_sheet.md) is a blind A/B sheet for human grading (key kept separately); until someone grades it, usefulness is not established. One sampled **LLM** explanation added a "safety or compliance concerns" remark that the complaint does not support, which no automatic check catches. Early development with a small 3B-parameter model produced `reason: "Low risk"` on a high-risk case, empty fields and invented figures such as "863% probability", which is why the validators exist.
+The pass rates hold by construction (the validators reject bad output first), and the templated baseline passes every automatic check too, so those checks cannot tell the two apart. The explanation prompt was tightened after the first live demo showed summaries that simply repeated the review and ended on vague phrases like "a moderate concern". The prompt now requires a one-sentence paraphrase that names the concrete issue and a reason that cites the tier's probability, and a validator rejects a summary that echoes the complaint (retry once, then the local fallback). On short reviews that took echoing from 68% to 0% and vague wording from 21% to 4%, at the price of two of the 28 short reviews now falling back to the local explanation. A Claude judge, scoring each pair twice with the order swapped, prefers the **LLM** explanation (85% against 9%) and scores it higher on faithfulness, usefulness and clarity. That judge is a **proxy, not human evidence**: it agreed with itself across the two orders 91% of the time, and one of the 45 cases was skipped because the judge returned no usable answer. [`results/explanation_review_sheet.md`](results/explanation_review_sheet.md) is a blind A/B sheet for human grading (key kept separately); until someone grades it, usefulness is not established. Early development with a small 3B-parameter model produced `reason: "Low risk"` on a high-risk case, empty fields and invented figures such as "863% probability", which is why the validators exist.
 
 </details>
 
@@ -542,7 +544,7 @@ Unknown fields are ignored, so older clients that still send `image` or `recomme
 ├── notebooks/           data exploration
 ├── deploy/              CloudFormation stacks
 ├── docs/                diagrams, figures and badges as code, plus the generated images
-├── tests/               93 tests
+├── tests/               97 tests
 └── .github/workflows/   GitHub Actions: CI and the deploy pipeline
 ```
 
@@ -566,13 +568,13 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 - **`evaluate_hybrid.py`**, **`evaluate_robustness.py`**, **`evaluate_behaviour.py`** (with `behaviour_cases.py`), **`evaluate_synthetic.py`**, **`evaluate_llm.py`**, **`judge_explanations.py`**, **`load_test.py`**, **`generate_sample_outputs.py`**: evaluation, behavioural probes, latency and the worked examples ([`sample_inputs.json`](data/samples/sample_inputs.json), [`sample_outputs.json`](data/samples/sample_outputs.json)).
 
 **Everything else**
-- **`tests/`**: 93 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
+- **`tests/`**: 97 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
 - **`deploy/`** and **`.github/workflows/`**: the **CloudFormation** stacks (`ecs-fargate.yaml`, `github-oidc.yaml`), CI and the deploy workflow.
 - **`docs/`**: [`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py) and [`make_badges.py`](docs/diagrams/make_badges.py) draw the diagrams, figures and badges (install the extra with `pip install -e ".[docs]"`, already part of `[dev]`; they also need **Graphviz**), so the pictures stay in step with the system. `docs/demo/` holds the scripts behind the demo (`record.sh` records a session with asciinema, `render.py` turns recordings into the GIF and stills with agg), the session scripts, and the raw recordings in `casts/`.
 
 ## Testing
 
-`python -m pytest` runs 93 tests (plus one expected failure that documents sarcasm) in about fifteen seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and **CloudWatch** metric format, end-to-end smoke tests, and behavioural tests (negation, typos, ALL CAPS, non-English, mixed sentiment) that run on the real models. **GitHub Actions** runs these tests on every push and pull request, then lints the **CloudFormation** templates and rebuilds the data splits from the raw CSV; the deploy workflow repeats the tests before it builds anything.
+`python -m pytest` runs 97 tests (plus one expected failure that documents sarcasm) in about fifteen seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and **CloudWatch** metric format, end-to-end smoke tests, and behavioural tests (negation, typos, ALL CAPS, non-English, mixed sentiment) that run on the real models. **GitHub Actions** runs these tests on every push and pull request, then lints the **CloudFormation** templates and rebuilds the data splits from the raw CSV; the deploy workflow repeats the tests before it builds anything.
 
 ![A pytest run (final frame of a real terminal recording)](docs/images/tests.png)
 
@@ -596,7 +598,7 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 - **Sarcasm is improved, not solved.** On a held-out set written by a different **LLM**, 30% of sarcastic complaints are still auto-replied (down from 63%), and the evidence is synthetic. Real customer sarcasm will differ; the test that records this is an expected failure in `tests/test_behaviour.py`.
 - **Recall on the high tier is 0.68 on the test set** against the 0.70 target met on validation, with a wide interval (about 0.64 to 0.73). 9 of 355 truly-high cases would be auto-replied. Lower `t_high` in `models/decision_config.json` to trade **precision** (0.64) for more **recall**.
 - **Medium tier** is the hardest (F1 0.48), as mixed reviews are ambiguous by nature.
-- **Is the LLM worth it?** The validators guarantee safe, consistent explanations, the **LLM** adds complaint-specific wording the templated baseline cannot, and a Claude judge prefers it, but no human has yet rated the two against each other (the blind sheet in `results/` is ready) and one sampled explanation contained an unsupported remark. If reviewers do not prefer it, `LLM_PROVIDER=template` removes the call, the cost and about 1.3 s of latency.
+- **Is the LLM worth it?** The validators guarantee safe, consistent explanations, the **LLM** adds complaint-specific wording the templated baseline cannot, and a Claude judge prefers it (85% to 9%), but no human has yet rated the two against each other (the blind sheet in `results/` is ready). If reviewers do not prefer it, `LLM_PROVIDER=template` removes the call, the cost and about 1.2 s of latency.
 - **Fairness.** Age is not a model input; results by age band and department are fairly even. No formal fairness test has been run.
 - **Evaluation scope.** English clothing reviews, one data split (seed variance was measured on the earlier, real-only model), no test on real support tickets, and the synthetic sarcasm data is LLM-written.
 - **Load numbers** come from one short deployment of a single task measured from India; the three-task autoscaling ceiling was not measured.

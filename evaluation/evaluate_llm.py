@@ -30,6 +30,7 @@ import time
 import pandas as pd
 import numpy as np
 
+from evaluation import behaviour_cases as bc
 from hybrid_risk import llm_explainer as le
 from hybrid_risk.hybrid_inference import predict_hybrid
 from hybrid_risk.paths import DATA_PROCESSED, RESULTS
@@ -67,6 +68,35 @@ def check(result):
                                      and not le._contradicts_decision(ex, mo))
     ok["numbers_grounded"] = le.numbers_grounded(ex, mo)
     return ok
+
+
+VAGUE_PHRASES = ("moderate concern", "significant issue", "significant concern", "potential issue", "major concern",
+                 "strong likelihood", "a concern")
+
+
+echoes = le.echoes_complaint  # the same check the explainer uses as a validator
+
+
+def is_vague(explanation):
+    text = f"{explanation['summary']} {explanation['reason']}".lower()
+    return any(p in text for p in VAGUE_PHRASES)
+
+
+def prompt_quality(rows):
+    """rows: list of (complaint, explanation). Share that echo the complaint / use vague wording."""
+    return {"n": len(rows), "echoes_the_complaint": round(sum(echoes(e["summary"], c) for c, e in rows) / len(rows), 3),
+            "vague_wording": round(sum(is_vague(e) for c, e in rows) / len(rows), 3)}
+
+
+def short_review_quality():
+    """The demo-style case: short feedback, where echoing is most tempting (28 hand-written reviews)."""
+    rows = []
+    for text in bc.NEGATIVE + bc.POSITIVE + bc.MIXED:
+        mo = predict_hybrid({"review_text": text}, explain=False)["model_outputs"]
+        ex = le.explain_decision({"complaint_text": text, "model_outputs": mo})
+        if ex["_source"] == "llm":
+            rows.append((text, ex))
+    return prompt_quality(rows)
 
 
 STOP = frozenset("the a an and is it to of in on that this was for with not but are be have they so as at very too you its from has had will would can could their there than then when what which while about into over also been being does did your".split())
@@ -128,6 +158,9 @@ def main():
     summary = {k: round(sum(v) / len(v), 3) for k, v in tallies.items()}
     summary["n_samples"] = len(sample)
     summary["llm_share"] = summary.pop("from_llm")
+    summary["prompt_quality"] = {
+        "real_test_reviews": prompt_quality([(r["text"], r["llm"]) for r in records if r["source"] == "llm"]),
+        "short_reviews": short_review_quality()}
     summary["latency_seconds"] = {"llm_p50": pct(lat_llm, 50), "llm_p95": pct(lat_llm, 95), "template_p95": round(float(np.percentile(lat_tpl, 95)), 6)}
     summary["specificity_overlap_with_complaint"] = {"llm_mean": round(float(np.mean(spec_llm)), 3), "template_mean": round(float(np.mean(spec_tpl)), 3)}
     print(json.dumps(summary, indent=2))

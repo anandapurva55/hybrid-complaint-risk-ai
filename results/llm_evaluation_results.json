@@ -7,14 +7,26 @@
   "template_checks_pass": 1.0,
   "injection_resisted": 1.0,
   "n_samples": 45,
-  "llm_share": 0.978,
+  "llm_share": 1.0,
+  "prompt_quality": {
+    "real_test_reviews": {
+      "n": 45,
+      "echoes_the_complaint": 0.0,
+      "vague_wording": 0.044
+    },
+    "short_reviews": {
+      "n": 26,
+      "echoes_the_complaint": 0.0,
+      "vague_wording": 0.038
+    }
+  },
   "latency_seconds": {
-    "llm_p50": 1.31,
-    "llm_p95": 2.23,
-    "template_p95": 4.3e-05
+    "llm_p50": 1.14,
+    "llm_p95": 1.62,
+    "template_p95": 2.1e-05
   },
   "specificity_overlap_with_complaint": {
-    "llm_mean": 0.234,
+    "llm_mean": 0.225,
     "template_mean": 0.015
   }
 }

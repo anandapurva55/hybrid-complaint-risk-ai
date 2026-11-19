@@ -19,7 +19,7 @@ BADGES = [
     ("cloudformation", "CloudFormation", "one stack", "#C2185B"),
     ("docker", "Docker", "550 MB in ECR", "#1D6FB8"),
     ("github-actions", "GitHub Actions", "CI + OIDC deploy", "#2F3A4A"),
-    ("tests", "tests", "93 passing", "#2E7D32"),
+    ("tests", "tests", "97 passing", "#2E7D32"),
     ("deterministic", "decisions", "deterministic", "#4F46E5"),
     ("llm-explains-only", "LLM", "explains only", "#7B3FC4"),
 ]

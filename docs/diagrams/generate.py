@@ -96,7 +96,7 @@ def release_path() -> None:
     with Diagram("", filename=str(OUT / "release_path"), show=False, direction="LR", graph_attr=GRAPH, node_attr=NODE, outformat="png"):
         gh = GithubActions("GitHub Actions\n(approved in the\nproduction environment)")
         with Cluster("Gates"):
-            tests = Codebuild("93 tests")
+            tests = Codebuild("97 tests")
             lint = Codebuild("cfn-lint")
         img = Docker("Build image\nlinux/amd64")
         ecr = ECR("ECR")

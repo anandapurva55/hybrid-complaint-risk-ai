@@ -59,13 +59,24 @@ def judge(client, rec, llm_first):
     return {"llm": d[llm_key], "template": d[tpl_key], "preferred": pref}
 
 
+def judge_with_retry(client, rec, llm_first):
+    try:
+        return judge(client, rec, llm_first)
+    except (AttributeError, KeyError, ValueError):  # no JSON / missing fields in the reply: one more attempt
+        return judge(client, rec, llm_first)
+
+
 def main():
     records = [r for r in json.load(open(RESULTS / "llm_eval_samples.json")) if r["source"] == "llm"]
     client = boto3.client("bedrock-runtime", region_name="us-east-1", config=Config(read_timeout=120, retries={"max_attempts": 3}))
     scores = {k: {d: [] for d in ("faithful", "useful", "clear")} for k in ("llm", "template")}
-    prefs, agree = [], []
+    prefs, agree, skipped = [], [], 0
     for rec in records:
-        first, second = judge(client, rec, True), judge(client, rec, False)
+        try:
+            first, second = judge_with_retry(client, rec, True), judge_with_retry(client, rec, False)
+        except Exception:  # the judge returned no usable JSON twice: skip the case and report it
+            skipped += 1
+            continue
         agree.append(first["preferred"] == second["preferred"])
         for res in (first, second):
             prefs.append(res["preferred"])
@@ -73,7 +84,7 @@ def main():
                 for d in scores[k]:
                     scores[k][d].append(res[k][d])
     n = len(prefs)
-    out = {"judge_model": JUDGE_MODEL, "n_cases": len(records), "n_judgements": n,
+    out = {"judge_model": JUDGE_MODEL, "n_cases": len(records) - skipped, "skipped_cases": skipped, "n_judgements": n,
            "note": "LLM judge, a PROXY and not human evidence; each case judged twice with A/B order swapped",
            "mean_scores_1_to_5": {k: {d: round(float(np.mean(v)), 2) for d, v in dims.items()} for k, dims in scores.items()},
            "preference": {p: round(prefs.count(p) / n, 3) for p in ("llm", "template", "tie")},

@@ -197,3 +197,26 @@ def test_template_provider_needs_no_llm(monkeypatch):
     monkeypatch.setattr(le, "_generate", lambda *a, **k: pytest.fail("LLM must not be called"))
     out = le.explain_decision({"complaint_text": "x", "model_outputs": LOW})
     assert out["_source"] == "template" and out["recommended_action"] == "auto_reply"
+
+
+def test_summary_that_echoes_the_complaint_is_rejected(monkeypatch):
+    complaint = "The zipper broke after one wear and nobody answered my emails."
+    use_client(monkeypatch, Sequence(good(summary=complaint), good(summary="Zipper failed after one wear; support unresponsive.")))
+    out = le.explain_decision({"complaint_text": complaint, "model_outputs": HIGH})
+    assert out["_source"] == "llm" and out["summary"].startswith("Zipper failed")
+
+
+def test_two_echoing_answers_fall_back(monkeypatch):
+    complaint = "Terrible quality, it fell apart after one wash."
+    use_client(monkeypatch, Sequence(good(summary=complaint + " Rated high."), good(summary=complaint)))
+    assert le.explain_decision({"complaint_text": complaint, "model_outputs": HIGH})["_source"] == "fallback"
+
+
+def test_echo_check_ignores_genuine_paraphrase():
+    assert not le.echoes_complaint("Zipper failed after one wear.", "The zipper broke after one wear and nobody answered my emails.")
+    assert le.echoes_complaint("the zipper broke after one wear and nobody answered my emails", "The zipper broke after one wear and nobody answered my emails.")
+
+
+def test_prompt_forbids_echoing_and_vague_wording():
+    prompt = le._build_prompt({"complaint_text": "x", "model_outputs": HIGH})
+    assert "Never repeat the complaint" in prompt and "moderate concern" in prompt and "percentage" in prompt

@@ -1,39 +1,39 @@
 {
   "1": {
-    "A": "llm",
-    "B": "template"
+    "A": "template",
+    "B": "llm"
   },
   "2": {
-    "A": "llm",
-    "B": "template"
+    "A": "template",
+    "B": "llm"
   },
   "3": {
-    "A": "llm",
-    "B": "template"
+    "A": "template",
+    "B": "llm"
   },
   "4": {
-    "A": "llm",
-    "B": "template"
+    "A": "template",
+    "B": "llm"
   },
   "5": {
     "A": "llm",
     "B": "template"
   },
   "6": {
-    "A": "llm",
-    "B": "template"
+    "A": "template",
+    "B": "llm"
   },
   "7": {
     "A": "template",
     "B": "llm"
   },
   "8": {
-    "A": "llm",
-    "B": "template"
+    "A": "template",
+    "B": "llm"
   },
   "9": {
-    "A": "llm",
-    "B": "template"
+    "A": "template",
+    "B": "llm"
   },
   "10": {
     "A": "template",
@@ -56,19 +56,19 @@
     "B": "template"
   },
   "15": {
-    "A": "template",
-    "B": "llm"
+    "A": "llm",
+    "B": "template"
   },
   "16": {
-    "A": "template",
-    "B": "llm"
+    "A": "llm",
+    "B": "template"
   },
   "17": {
-    "A": "template",
-    "B": "llm"
+    "A": "llm",
+    "B": "template"
   },
   "18": {
-    "A": "template",
-    "B": "llm"
+    "A": "llm",
+    "B": "template"
   }
 }
