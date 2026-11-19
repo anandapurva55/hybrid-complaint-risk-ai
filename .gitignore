@@ -17,3 +17,4 @@ models/transformer_fp32/
 *.egg-info/
 models/rnn_model.keras
 models/transformer_fp32_synth/
+docs/demo/casts/demo.cast

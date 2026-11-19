@@ -25,7 +25,7 @@ A system that reads a piece of customer feedback and answers three practical que
 
 ![Live demo: three outcomes and the fallback, from the deployed service](docs/images/demo.gif)
 
-<sub>Captured on 2026-11-19 from a live deployment (ECS Fargate behind CloudFront and WAF, explanations from Amazon Bedrock), since torn down. This is not a screen recording: the terminal window is drawn from the captured text of the real commands (`docs/demo/record.py`), so the text is real output from that service while the window and the typing are rendered. Clips 1 to 3 show the three outcomes (answered automatically, sent to a person, escalated). Clip 4 repeats clip 3 with the LLM unavailable: the decision is identical and only the explanation falls back.</sub>
+<sub>Recorded with asciinema on 2026-11-19 from a live deployment (ECS Fargate behind CloudFront and WAF, explanations from Amazon Bedrock), since torn down. It is a real terminal session: each command is typed by a script at a human-like pace and then actually run, so the output is what the service returned at that moment. The raw recordings are in `docs/demo/casts/` (play one with `asciinema play`). Clips 1 to 3 show the three outcomes (answered automatically, sent to a person, escalated). Clip 4 repeats clip 3 with the LLM unavailable: the decision is identical and only the explanation falls back.</sub>
 
 Run it yourself, locally or against a deployment with `--url` and `HYBRID_RISK_API_KEY`. The output below is from the live capture above; the explanation wording comes from the **LLM**, so a local run will phrase it differently:
 
@@ -171,7 +171,7 @@ All of this lives in [`decision.py`](src/hybrid_risk/decision.py), uses only **N
 
 1. **Probabilities.** **DistilBERT** outputs `[P(low), P(medium), P(high)]` through a softmax. The column order is fixed in one place (`reorder_proba`).
 2. **Temperature calibration.** Raw model confidence is often too high or too low. One number `T` rescales the probabilities as `p^(1/T)` and renormalises them. `T` is found by minimising **log-loss** on the validation split over a grid from 0.5 to 4.0, and comes out at `T = 1.2` (slightly softer). Class weights are deliberately not used in training, because they distort the probabilities that this layer depends on.
-3. **Thresholds on probabilities, not on a score.** `P(high) >= 0.45` gives `high`; otherwise `P(high) + P(medium) >= 0.25` gives `medium`; otherwise `low`. The two **thresholds** come from a grid search on validation that keeps only pairs meeting **two** constraints, at least 70% **recall** on `high` and at most 2% of the truly-high reviews predicted `low` (those would be auto-replied, the costliest mistake), and then takes the best **macro-F1** (validation **recall** 0.70, **macro-F1** 0.71). The second constraint was added after a tuning run, with only the **recall** target, quietly moved the medium threshold up and let the number of auto-replied truly-high cases rise from 5 to 12. Deciding on probabilities matters because an averaged score cannot tell a confident "medium" from a 50/50 split between "low" and "high"; that split is caught by a review trigger instead.
+3. **Thresholds on probabilities, not on a score.** `P(high) >= 0.45` gives `high`; otherwise `P(high) + P(medium) >= 0.25` gives `medium`; otherwise `low`. The two **thresholds** come from a grid search on validation that keeps only pairs meeting **two** constraints, at least 70% **recall** on `high` and at most 2% of the truly-high reviews predicted `low` (those would be auto-replied, the costliest mistake), and then takes the best **macro-F1** (validation **recall** 0.70, **macro-F1** 0.71). The second constraint exists because tuning on the **recall** target alone moved the medium threshold up and raised the number of auto-replied truly-high cases on the test set from 5 to 12. Deciding on probabilities matters because an averaged score cannot tell a confident "medium" from a 50/50 split between "low" and "high"; that split is caught by a review trigger instead.
 
 ### The deterministic review rules
 
@@ -333,7 +333,7 @@ The test set says little about input the training data barely contains, so these
 
 ### Sarcasm and negation
 
-The first version failed on sarcasm: both text models read "Oh great, another top that fell apart" as positive. To measure and then reduce that without tuning against my own handful of probes, [`generate_synthetic.py`](training/generate_synthetic.py) had LLMs write sarcastic complaints and negated reviews ([`data/synthetic/`](data/synthetic/)). Training and dev data come from **Claude** models; the held-out **test** comes from a different family (**Amazon Nova Pro**), is never used for training, tuning or threshold selection, and the real validation and test reviews are untouched. Share the system gets right (complaints: not auto-replied; satisfied reviews: not escalated):
+The first version failed on sarcasm: both text models read "Oh great, another top that fell apart" as positive. To measure and then reduce that without tuning against a handful of hand-written probes, [`generate_synthetic.py`](training/generate_synthetic.py) uses LLMs to write sarcastic complaints and negated reviews ([`data/synthetic/`](data/synthetic/)). Training and dev data come from **Claude** models; the held-out **test** comes from a different family (**Amazon Nova Pro**), is never used for training, tuning or threshold selection, and the real validation and test reviews are untouched. Share the system gets right (complaints: not auto-replied; satisfied reviews: not escalated):
 
 | Held-out test case (written by Nova Pro) | n | Before training on the synthetic data | After |
 |---|---|---|---|
@@ -405,11 +405,11 @@ On the deployed task the model path sustained about 10 requests per second at p9
 
 ### Evidence from the live deployment
 
-The stack was deployed, exercised and torn down; these are terminal-style renderings of the real AWS CLI output from that deployment, drawn by `docs/demo/infra_shots.py` from the text the commands printed (they are not screenshots of a screen; captured on 2026-11-19, account ID redacted). The ECS service has one running, healthy **Fargate** task with a healthy load-balancer target, all four alarms are OK, and the application's own metrics (one metric line per prediction) are arriving in **CloudWatch**.
+The stack was deployed, exercised and torn down. These are the final frames of real asciinema recordings of AWS CLI commands run against it on 2026-11-19 (no account ID or key is ever printed). The ECS service has one running, healthy **Fargate** task with a healthy load-balancer target, all four alarms are OK, and the application's own metrics (one metric line per prediction) are arriving in **CloudWatch**.
 
-![ECS service, task and target health (rendered from real CLI output)](docs/images/infra_ecs.png)
+![ECS service, task and target health (from a real terminal recording)](docs/images/infra_ecs.png)
 
-![CloudWatch alarms and metrics, CloudFront distribution and WAF (rendered from real CLI output)](docs/images/infra_monitoring.png)
+![CloudWatch alarms and metrics, CloudFront distribution and WAF (from a real terminal recording)](docs/images/infra_monitoring.png)
 
 ### Latency and throughput
 
@@ -568,13 +568,13 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 **Everything else**
 - **`tests/`**: 93 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
 - **`deploy/`** and **`.github/workflows/`**: the **CloudFormation** stacks (`ecs-fargate.yaml`, `github-oidc.yaml`), CI and the deploy workflow.
-- **`docs/`**: [`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py) and [`make_badges.py`](docs/diagrams/make_badges.py) draw the diagrams, figures and badges (install the extra with `pip install -e ".[docs]"`, already part of `[dev]`; they also need **Graphviz**), so the pictures stay in step with the system. `docs/demo/` holds the scripts behind the demo GIF and the AWS and **pytest** screenshots (`record.py`, `infra_shots.py`, `term.py`) and the captured output.
+- **`docs/`**: [`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py) and [`make_badges.py`](docs/diagrams/make_badges.py) draw the diagrams, figures and badges (install the extra with `pip install -e ".[docs]"`, already part of `[dev]`; they also need **Graphviz**), so the pictures stay in step with the system. `docs/demo/` holds the scripts behind the demo (`record.sh` records a session with asciinema, `render.py` turns recordings into the GIF and stills with agg), the session scripts, and the raw recordings in `casts/`.
 
 ## Testing
 
 `python -m pytest` runs 93 tests (plus one expected failure that documents sarcasm) in about fifteen seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and **CloudWatch** metric format, end-to-end smoke tests, and behavioural tests (negation, typos, ALL CAPS, non-English, mixed sentiment) that run on the real models. **GitHub Actions** runs these tests on every push and pull request, then lints the **CloudFormation** templates and rebuilds the data splits from the raw CSV; the deploy workflow repeats the tests before it builds anything.
 
-![A pytest run, rendered from the text of a local `pytest -q` run (not a screenshot)](docs/images/tests.png)
+![A pytest run (final frame of a real terminal recording)](docs/images/tests.png)
 
 ## Design decisions
 
