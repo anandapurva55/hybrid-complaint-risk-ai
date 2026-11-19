@@ -25,7 +25,7 @@ A system that reads a piece of customer feedback and answers three practical que
 
 ![Live demo: three outcomes and the fallback, from the deployed service](docs/images/demo.gif)
 
-<sub>Recorded with asciinema on 2026-11-19 from a live deployment (ECS Fargate behind CloudFront and WAF, explanations from Amazon Bedrock), since torn down. It is a real terminal session: each command is typed by a script at a human-like pace and then actually run, so the output is what the service returned at that moment. The raw recordings are in `docs/demo/casts/` (play one with `asciinema play`). Clips 1 to 3 show the three outcomes (answered automatically, sent to a person, escalated). Clip 4 repeats clip 3 with the LLM unavailable: the decision is identical and only the explanation falls back.</sub>
+<sub>Recorded with asciinema on 2026-11-19 from a live deployment made by the GitHub Actions pipeline (ECS Fargate behind CloudFront and WAF, explanations from Amazon Bedrock), since torn down. It is a real terminal session: each command is typed by a script at a human-like pace and then actually run, so the output is what the service returned at that moment. The raw recordings are in `docs/demo/casts/` (play one with `asciinema play`). Clips 1 to 3 show the three outcomes (answered automatically, sent to a person, escalated). Clip 4 repeats clip 3 with the LLM unavailable: the decision is identical and only the explanation falls back.</sub>
 
 Run it yourself, locally or against a deployment with `--url` and `HYBRID_RISK_API_KEY`. The output below is from the live capture above; the explanation wording comes from the **LLM**, so a local run will phrase it differently:
 
@@ -407,7 +407,7 @@ On the deployed task the model path sustained about 10 requests per second at p9
 
 ### Evidence from the live deployment
 
-The stack was deployed, exercised and torn down. These are the final frames of real asciinema recordings of AWS CLI commands run against it on 2026-11-19 (no account ID or key is ever printed). The ECS service has one running, healthy **Fargate** task with a healthy load-balancer target, all four alarms are OK, and the application's own metrics (one metric line per prediction) are arriving in **CloudWatch**.
+The stack was deployed, exercised and torn down. These are the final frames of real asciinema recordings of AWS CLI commands run against it on 2026-11-19 (no account ID or key is ever printed). The ECS service has one running, healthy **Fargate** task with a healthy load-balancer target, three of the four alarms are OK (the review-share drift alarm is in ALARM, as expected after a handful of requests that were mostly escalations), and the application's own metrics (one metric line per prediction) are arriving in **CloudWatch**.
 
 ![ECS service, task and target health (from a real terminal recording)](docs/images/infra_ecs.png)
 
@@ -466,7 +466,7 @@ curl -X POST $URL/predict -H "X-API-Key: $KEY" -H "Content-Type: application/jso
 
 **Option B (recommended): keyless deploy from GitHub Actions**
 
-**Status:** steps 1 and 2 are done for this account/repo (stack `hybrid-risk-github-oidc`, role `hybrid-risk-github-deploy`, repository variable `AWS_DEPLOY_ROLE_ARN`, GitHub environment `production` with the owner as required reviewer and deployments restricted to `main`). The workflow has not been run yet: it needs the code merged to `main`.
+**Status:** steps 1 and 2 are done for this account/repo (stack `hybrid-risk-github-oidc`, role `hybrid-risk-github-deploy`, repository variable `AWS_DEPLOY_ROLE_ARN`, GitHub environment `production` with the owner as required reviewer and deployments restricted to `main`). The workflow has been run end to end once (GitHub Actions run 44510151090, approved at the `production` gate): it built the image, pushed it to **ECR**, deployed the stack and passed the smoke test. The demo recordings above were taken against that pipeline-deployed stack.
 
 1. Once, from your own admin identity (not root keys):
    `aws cloudformation deploy --stack-name hybrid-risk-github-oidc --template-file deploy/github-oidc.yaml --capabilities CAPABILITY_NAMED_IAM`
@@ -602,4 +602,4 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 - **Fairness.** Age is not a model input; results by age band and department are fairly even. No formal fairness test has been run.
 - **Evaluation scope.** English clothing reviews, one data split (seed variance was measured on the earlier, real-only model), no test on real support tickets, and the synthetic sarcasm data is LLM-written.
 - **Load numbers** come from one short deployment of a single task measured from India; the three-task autoscaling ceiling was not measured.
-- **Operations.** **HTTPS** uses **CloudFront**'s default certificate (a custom domain needs your own ACM certificate), the **WAF** rule limits per IP only (managed rule groups are not enabled), autoscaling is CPU-based, and `/stats` is per task while the **CloudWatch** metrics are fleet-wide. There is no automatic retraining or label feedback loop. The keyless **GitHub Actions** deploy workflow has been set up but has not been run end to end.
+- **Operations.** **HTTPS** uses **CloudFront**'s default certificate (a custom domain needs your own ACM certificate), the **WAF** rule limits per IP only (managed rule groups are not enabled), autoscaling is CPU-based, and `/stats` is per task while the **CloudWatch** metrics are fleet-wide. There is no automatic retraining or label feedback loop. The keyless **GitHub Actions** deploy workflow has been run end to end once; it has not been exercised beyond that single deployment.
