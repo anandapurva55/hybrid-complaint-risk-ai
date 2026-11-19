@@ -1,5 +1,5 @@
 """
-Renders terminal screenshots of REAL AWS CLI output from a running deployment of the stack, plus a pytest run:
+Renders terminal-STYLE images (drawn with Pillow, not screen captures) from the REAL text printed by AWS CLI commands against a running deployment of the stack, plus a pytest run:
 
   docs/images/infra_ecs.png         ECS service (running task) and ALB target health
   docs/images/infra_monitoring.png  CloudWatch alarms and the app's own metrics, CloudFront distribution, WAF

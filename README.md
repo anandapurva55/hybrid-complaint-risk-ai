@@ -25,7 +25,7 @@ A system that reads a piece of customer feedback and answers three practical que
 
 ![Live demo: three outcomes and the fallback, from the deployed service](docs/images/demo.gif)
 
-<sub>Captured on 2026-11-19 from a live deployment (ECS Fargate behind CloudFront and WAF, explanations from Amazon Bedrock), since torn down. The text is real output from that service; only the typing is animated. Clips 1 to 3 show the three outcomes (answered automatically, sent to a person, escalated). Clip 4 repeats clip 3 with the LLM unavailable: the decision is identical and only the explanation falls back.</sub>
+<sub>Captured on 2026-11-19 from a live deployment (ECS Fargate behind CloudFront and WAF, explanations from Amazon Bedrock), since torn down. This is not a screen recording: the terminal window is drawn from the captured text of the real commands (`docs/demo/record.py`), so the text is real output from that service while the window and the typing are rendered. Clips 1 to 3 show the three outcomes (answered automatically, sent to a person, escalated). Clip 4 repeats clip 3 with the LLM unavailable: the decision is identical and only the explanation falls back.</sub>
 
 Run it yourself, locally or against a deployment with `--url` and `HYBRID_RISK_API_KEY`. The output below is from the live capture above; the explanation wording comes from the **LLM**, so a local run will phrase it differently:
 
@@ -405,11 +405,11 @@ On the deployed task the model path sustained about 10 requests per second at p9
 
 ### Evidence from the live deployment
 
-The stack was deployed, exercised and torn down; these are real AWS CLI outputs from that deployment (captured on 2026-11-19, account ID redacted). The ECS service has one running, healthy **Fargate** task with a healthy load-balancer target, all four alarms are OK, and the application's own metrics (one metric line per prediction) are arriving in **CloudWatch**.
+The stack was deployed, exercised and torn down; these are terminal-style renderings of the real AWS CLI output from that deployment, drawn by `docs/demo/infra_shots.py` from the text the commands printed (they are not screenshots of a screen; captured on 2026-11-19, account ID redacted). The ECS service has one running, healthy **Fargate** task with a healthy load-balancer target, all four alarms are OK, and the application's own metrics (one metric line per prediction) are arriving in **CloudWatch**.
 
-![ECS service, task and target health](docs/images/infra_ecs.png)
+![ECS service, task and target health (rendered from real CLI output)](docs/images/infra_ecs.png)
 
-![CloudWatch alarms and metrics, CloudFront distribution and WAF](docs/images/infra_monitoring.png)
+![CloudWatch alarms and metrics, CloudFront distribution and WAF (rendered from real CLI output)](docs/images/infra_monitoring.png)
 
 ### Latency and throughput
 
@@ -574,7 +574,7 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 
 `python -m pytest` runs 93 tests (plus one expected failure that documents sarcasm) in about fifteen seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and **CloudWatch** metric format, end-to-end smoke tests, and behavioural tests (negation, typos, ALL CAPS, non-English, mixed sentiment) that run on the real models. **GitHub Actions** runs these tests on every push and pull request, then lints the **CloudFormation** templates and rebuilds the data splits from the raw CSV; the deploy workflow repeats the tests before it builds anything.
 
-![A pytest run](docs/images/tests.png)
+![A pytest run, rendered from the text of a local `pytest -q` run (not a screenshot)](docs/images/tests.png)
 
 ## Design decisions
 

@@ -5,7 +5,7 @@ Records the terminal demo shown in the README (docs/images/demo.gif).
     python docs/demo/record.py --render        # re-render from docs/demo/captured.json, runs nothing
 
 --capture runs the REAL command `python -m hybrid_risk --url <service> "<text>"` for each clip and stores
-its output with the capture date. Only the typing animation is synthetic. The service in the shipped GIF
+its output with the capture date. The terminal window and the typing animation are RENDERED with Pillow (this is not a screen recording). The service in the shipped GIF
 was a live deployment captured on the date shown in the title bar and has since been torn down.
 """
 import json
