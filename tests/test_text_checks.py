@@ -33,7 +33,7 @@ def test_english_share_separates_english_from_spanish():
 def test_noisy_or_non_english_text_is_never_auto_replied():
     confident_low = np.array([[0.97, 0.02, 0.01]])
     for flag in ("noisy_text", "non_english"):
-        res = assess(confident_low, confident_low, dict(DEFAULT_CONFIG), extra_flags={flag: np.array([True])})
+        res = assess(confident_low, dict(DEFAULT_CONFIG), extra_flags={flag: np.array([True])})
         assert res["level"][0] == "low"
         assert res["action"][0] == "manual_review" and res["review"][0]
 

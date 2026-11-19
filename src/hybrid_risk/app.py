@@ -29,7 +29,7 @@ monitor = Monitor()
 
 app = FastAPI(
     title="Hybrid Dissatisfaction-Risk Triage API",
-    description="Classical ML + fine-tuned DistilBERT decision with an LLM explanation. Risk is a proxy "
+    description="Fine-tuned DistilBERT decision with an LLM explanation. Risk is a proxy "
                 "derived from star ratings, not an observed escalation outcome.",
     version="2.0.0",
 )
@@ -42,21 +42,19 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None)):
 
 
 class ComplaintInput(BaseModel):
-    """Trained-model schema (Women's E-Commerce Clothing Reviews columns).
-    Unknown fields (e.g. legacy `image`, `recommended_ind`) are ignored."""
+    """Only `review_text` is used. The other fields mirror the original dataset's columns and are
+    accepted (and validated if present) for compatibility, but ignored. Unknown fields are ignored too."""
 
     customer_id: Optional[str] = Field(None, max_length=64)
     review_text: str = Field(..., min_length=1, max_length=5000, description="Complaint / review text.")
-    age: Optional[int] = Field(None, ge=10, le=120, description="Accepted for compatibility; not used by the models.")
-    positive_feedback_count: int = Field(..., ge=0)
-    division_name: str = Field(..., max_length=100)
-    department_name: str = Field(..., max_length=100)
-    class_name: str = Field(..., max_length=100)
+    age: Optional[int] = Field(None, ge=10, le=120, description="Accepted for compatibility; not used.")
+    positive_feedback_count: Optional[int] = Field(None, ge=0, description="Accepted for compatibility; not used.")
+    division_name: Optional[str] = Field(None, max_length=100, description="Accepted for compatibility; not used.")
+    department_name: Optional[str] = Field(None, max_length=100, description="Accepted for compatibility; not used.")
+    class_name: Optional[str] = Field(None, max_length=100, description="Accepted for compatibility; not used.")
 
 
 class ModelOutputs(BaseModel):
-    classical_score: float
-    transformer_score: float
     final_score: float
     probabilities: Dict[str, float]
     risk_level: str

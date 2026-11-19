@@ -1,13 +1,11 @@
 """
-Uncertainty, subgroup and ordinal-modelling checks for the hybrid.
+Uncertainty and subgroup checks for the served system.
 
-  1. Bootstrap 95% CIs on the test split for hybrid macro-F1 / high recall /
-     high precision, and for the paired difference hybrid - transformer-alone (same thresholds, so slightly favourable to the hybrid).
-  2. 5-fold cross-validation of the classical model on train+val.
-  3. Subgroup metrics (age band, department): high recall, macro-F1, auto-reply
-     share, and the share of truly-high cases that would be auto-replied.
-  4. Ordinal experiment: two cumulative binary logistic models (>=medium,
-     =high) vs the multinomial classical model.
+  1. Bootstrap 95% CIs on the test split for macro-F1 / high recall / high precision, and the paired
+     difference between the system and the same model with the classical baseline blended back in
+     (each with its own validation-tuned thresholds). That interval is the evidence for removing the blend.
+  2. Subgroup metrics (age band, department): high recall, macro-F1, auto-reply share, and the share of
+     truly-high cases that would be auto-replied. Age is audited here but is NOT a model input.
 
 Writes results/robustness_results.json.   python -m evaluation.evaluate_robustness
 """
@@ -15,16 +13,15 @@ import json
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import f1_score, recall_score, precision_score, roc_auc_score
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.metrics import f1_score, precision_score, recall_score
 
+from evaluation.evaluate_hybrid import BLEND_WEIGHT
 from hybrid_risk import hybrid_inference as hi
 from hybrid_risk.decision import apply_temperature, assess, decide_levels, load_config
 from hybrid_risk.paths import DATA_PROCESSED, RESULTS
-from hybrid_risk.risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE, FEATURE_COLUMNS
-from training.train_classical_model import build_pipeline
-from training.tune_decision import tune_thresholds
+from hybrid_risk.risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE
+from training import baselines
+from training.tune_decision import fit_temperature, tune_thresholds
 
 N_BOOT = 1000
 
@@ -44,45 +41,36 @@ def ci(vals):
 
 def main():
     cfg = load_config()
-    test = pd.read_csv(DATA_PROCESSED / "test.csv")
-    y = test[TARGET].to_numpy()
-    p_cl = hi.classical_proba(test)
-    p_rn = hi.transformer_proba(test[TEXT_FEATURE].astype(str))
-    res = assess(p_cl, p_rn, cfg, extra_flags=hi.text_flags(test[TEXT_FEATURE], cfg))
-    hyb = res["level"]
-    # transformer alone, with its OWN thresholds tuned on validation (same rule as the hybrid)
     val = pd.read_csv(DATA_PROCESSED / "val.csv")
-    tx_val = apply_temperature(hi.transformer_proba(val[TEXT_FEATURE].astype(str)), cfg["temp_text"])
-    th, tm, _, _ = tune_thresholds(tx_val, val[TARGET].to_numpy())
-    cls = decide_levels(res["p_text"], th, tm)
-    out = {}
+    test = pd.read_csv(DATA_PROCESSED / "test.csv")
+    y, yv = test[TARGET].to_numpy(), val[TARGET].to_numpy()
+    p_tx, p_tx_v = hi.transformer_proba(test[TEXT_FEATURE].astype(str)), hi.transformer_proba(val[TEXT_FEATURE].astype(str))
+    res = assess(p_tx, cfg, extra_flags=hi.text_flags(test[TEXT_FEATURE], cfg))
+    system = decide_levels(res["p_final"], cfg["t_high"], cfg["t_medium"])
 
-    # 1. bootstrap
+    # the same model with the classical baseline blended back in, each tuned on validation
+    pc_v, pc_t = baselines.classical_proba(val), baselines.classical_proba(test)
+    t_cl = fit_temperature(pc_v, np.array([CLASSES.index(v) for v in yv]))
+    c_v, c_t = apply_temperature(pc_v, t_cl), apply_temperature(pc_t, t_cl)
+    tx_v = apply_temperature(p_tx_v, cfg["temp_text"])
+    blend_v = BLEND_WEIGHT * c_v + (1 - BLEND_WEIGHT) * tx_v
+    blend_t = BLEND_WEIGHT * c_t + (1 - BLEND_WEIGHT) * res["p_final"]
+    th, tm, _, _ = tune_thresholds(blend_v, yv)
+    blended = decide_levels(blend_t, th, tm)
+
     rng = np.random.RandomState(RANDOM_STATE)
-    boots = {"hybrid": [], "transformer_alone": [], "diff_macro_f1": []}
+    sys_b, blend_b, diff = [], [], []
     keys = ("macro_f1", "high_recall", "high_precision")
     for _ in range(N_BOOT):
         i = rng.randint(0, len(y), len(y))
-        h, c = stats(y[i], hyb[i]), stats(y[i], cls[i])
-        boots["hybrid"].append(h); boots["transformer_alone"].append(c)
-        boots["diff_macro_f1"].append(h["macro_f1"] - c["macro_f1"])
-    out["bootstrap_95ci"] = {
-        "hybrid": {k: ci([b[k] for b in boots["hybrid"]]) for k in keys},
-        "transformer_alone": {k: ci([b[k] for b in boots["transformer_alone"]]) for k in keys},
-        "hybrid_minus_transformer_macro_f1": ci(boots["diff_macro_f1"]),
-        "n_boot": N_BOOT,
-    }
+        s, b = stats(y[i], system[i]), stats(y[i], blended[i])
+        sys_b.append(s); blend_b.append(b); diff.append(b["macro_f1"] - s["macro_f1"])
+    out = {"bootstrap_95ci": {
+        "served_system": {k: ci([r[k] for r in sys_b]) for k in keys},
+        "with_classical_blended_back_in": {k: ci([r[k] for r in blend_b]) for k in keys},
+        "blend_minus_system_macro_f1": ci(diff), "n_boot": N_BOOT}}
 
-    # 2. cross-validation of the classical model
-    trval = pd.concat([pd.read_csv(DATA_PROCESSED / "train.csv"), pd.read_csv(DATA_PROCESSED / "val.csv")])
-    cv = cross_validate(build_pipeline(), trval[FEATURE_COLUMNS], trval[TARGET],
-                        cv=StratifiedKFold(5, shuffle=True, random_state=RANDOM_STATE),
-                        scoring=["f1_macro", "accuracy"], n_jobs=1)
-    out["classical_5fold_cv_argmax"] = {k: [round(float(cv[f"test_{k}"].mean()), 4), round(float(cv[f"test_{k}"].std()), 4)]
-                                        for k in ("f1_macro", "accuracy")}
-
-    # 3. subgroups
-    test = test.assign(pred=hyb, action=res["action"])
+    test = test.assign(pred=system, action=res["action"])
     test["age_band"] = pd.cut(test["Age"], [0, 29, 45, 60, 200], labels=["<30", "30-45", "46-60", "60+"])
     groups = {}
     for col in ("age_band", "Department Name"):
@@ -102,34 +90,9 @@ def main():
         groups[col] = rows
     out["subgroups"] = groups
 
-    # 4. ordinal experiment on the classical feature pipeline
-    train = pd.read_csv(DATA_PROCESSED / "train.csv")
-    pipe = build_pipeline().fit(train[FEATURE_COLUMNS], train[TARGET])
-    pre = pipe.named_steps["preprocessor"]
-    Xtr, Xte = pre.transform(train[FEATURE_COLUMNS]), pre.transform(test[FEATURE_COLUMNS])
-    ge_med = LogisticRegression(max_iter=2000).fit(Xtr, train[TARGET].isin(["medium", "high"]))
-    is_high = LogisticRegression(max_iter=2000).fit(Xtr, train[TARGET] == "high")
-    a, b = ge_med.predict_proba(Xte)[:, 1], is_high.predict_proba(Xte)[:, 1]
-    p_ord = np.column_stack([1 - a, np.clip(a - b, 0, 1), b])
-    p_ord /= p_ord.sum(axis=1, keepdims=True)
-    multi = res["p_classical"]
-    def best_f1(p):
-        best = 0
-        for th in np.arange(0.1, 0.7, 0.025):
-            for tm in np.arange(0.2, 0.8, 0.025):
-                best = max(best, f1_score(y, decide_levels(p, th, tm), labels=CLASSES, average="macro"))
-        return round(float(best), 4)
-    out["ordinal_experiment"] = {
-        "note": "best test macro-F1 over a threshold grid (optimistic, for comparing model forms only)",
-        "multinomial_classical": best_f1(multi),
-        "cumulative_binary_ordinal": best_f1(p_ord),
-        "auc_high": {"multinomial": round(roc_auc_score(y == "high", multi[:, 2]), 4),
-                     "ordinal": round(roc_auc_score(y == "high", p_ord[:, 2]), 4)},
-    }
-
     with open(RESULTS / "robustness_results.json", "w") as f:
         json.dump(out, f, indent=2)
-    print(json.dumps(out, indent=2))
+    print(json.dumps(out["bootstrap_95ci"], indent=1))
 
 
 if __name__ == "__main__":

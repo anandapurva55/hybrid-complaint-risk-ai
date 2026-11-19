@@ -15,10 +15,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only what inference needs: the hybrid_risk package, the trained artifacts, the tuned decision
+# Copy only what inference needs: the hybrid_risk package, the DistilBERT artifacts, the tuned decision
 # config and the monitoring baseline. Training and evaluation code, data, notebooks and the LSTM baseline are left out.
 COPY src/ ./src/
-COPY models/classical_model.pkl models/decision_config.json ./models/
+COPY models/decision_config.json ./models/
 COPY models/transformer_assets/ ./models/transformer_assets/
 COPY results/monitoring_baseline.json ./results/
 ENV PYTHONPATH=/app/src

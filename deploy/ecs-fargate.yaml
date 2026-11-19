@@ -18,6 +18,11 @@ Parameters:
   BedrockModelId:
     Type: String
     Default: us.amazon.nova-lite-v1:0
+  LlmProvider:
+    Type: String
+    Default: bedrock
+    AllowedValues: [bedrock, template, none]
+    Description: Explanation source. bedrock = LLM; template = deterministic templated text (no LLM call); none = local fallback only
   DesiredCount:
     Type: Number
     Default: 1
@@ -160,7 +165,7 @@ Resources:
           Essential: true
           PortMappings: [{ ContainerPort: 8000 }]
           Environment:
-            - { Name: LLM_PROVIDER, Value: bedrock }
+            - { Name: LLM_PROVIDER, Value: !Ref LlmProvider }
             - { Name: BEDROCK_MODEL_ID, Value: !Ref BedrockModelId }
             - { Name: AWS_DEFAULT_REGION, Value: !Ref "AWS::Region" }
           Secrets:

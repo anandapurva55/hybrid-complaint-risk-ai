@@ -6,16 +6,51 @@
     "high": 0.1045
   },
   "decision_config": {
-    "w_classical": 0.1,
-    "temp_classical": 0.9,
-    "temp_text": 1.15,
-    "t_high": 0.375,
-    "t_medium": 0.2,
+    "temp_text": 1.2,
+    "t_high": 0.45,
+    "t_medium": 0.25,
     "conflict_min": 0.3,
     "max_proba_floor": 0.45,
-    "disagreement_tv": 0.45,
     "noisy_pieces_per_word": 1.5,
     "min_english_share": 0.1
+  },
+  "system": {
+    "accuracy": 0.8346,
+    "macro_f1": 0.689,
+    "per_class": {
+      "low": {
+        "precision": 0.9703,
+        "recall": 0.898,
+        "f1-score": 0.9328
+      },
+      "medium": {
+        "precision": 0.408,
+        "recall": 0.5755,
+        "f1-score": 0.4775
+      },
+      "high": {
+        "precision": 0.6383,
+        "recall": 0.6761,
+        "f1-score": 0.6566
+      }
+    },
+    "confusion_matrix_rows_true_cols_pred": [
+      [
+        2351,
+        248,
+        19
+      ],
+      [
+        63,
+        244,
+        117
+      ],
+      [
+        9,
+        106,
+        240
+      ]
+    ]
   },
   "components_argmax": {
     "majority_class_low": {
@@ -56,7 +91,7 @@
         ]
       ]
     },
-    "classical": {
+    "classical_baseline": {
       "accuracy": 0.8275,
       "macro_f1": 0.5885,
       "per_class": {
@@ -95,44 +130,44 @@
       ]
     },
     "transformer": {
-      "accuracy": 0.8513,
-      "macro_f1": 0.6751,
+      "accuracy": 0.856,
+      "macro_f1": 0.6877,
       "per_class": {
         "low": {
-          "precision": 0.9426,
-          "recall": 0.9469,
-          "f1-score": 0.9447
+          "precision": 0.9444,
+          "recall": 0.9465,
+          "f1-score": 0.9454
         },
         "medium": {
-          "precision": 0.4638,
+          "precision": 0.4794,
           "recall": 0.4387,
-          "f1-score": 0.4509
+          "f1-score": 0.4581
         },
         "high": {
-          "precision": 0.6202,
-          "recall": 0.6394,
-          "f1-score": 0.6297
+          "precision": 0.6338,
+          "recall": 0.6873,
+          "f1-score": 0.6595
         }
       },
       "confusion_matrix_rows_true_cols_pred": [
         [
-          2479,
-          116,
-          23
+          2478,
+          118,
+          22
         ],
         [
-          122,
+          119,
           186,
-          116
+          119
         ],
         [
-          29,
-          99,
-          227
+          27,
+          84,
+          244
         ]
       ]
     },
-    "rnn_lstm_baseline_not_in_decision": {
+    "rnn_lstm_baseline": {
       "accuracy": 0.8198,
       "macro_f1": 0.5474,
       "per_class": {
@@ -171,193 +206,27 @@
       ]
     }
   },
-  "components_with_tuned_thresholds": {
-    "classical_alone": {
-      "accuracy": 0.7966,
-      "macro_f1": 0.6317,
-      "per_class": {
-        "low": {
-          "precision": 0.9643,
-          "recall": 0.8678,
-          "f1-score": 0.9136
-        },
-        "medium": {
-          "precision": 0.3466,
-          "recall": 0.6179,
-          "f1-score": 0.4441
-        },
-        "high": {
-          "precision": 0.6035,
-          "recall": 0.4845,
-          "f1-score": 0.5375
-        }
-      },
-      "confusion_matrix_rows_true_cols_pred": [
-        [
-          2272,
-          325,
-          21
-        ],
-        [
-          70,
-          262,
-          92
-        ],
-        [
-          14,
-          169,
-          172
-        ]
-      ]
-    },
-    "transformer_alone": {
-      "accuracy": 0.8254,
-      "macro_f1": 0.6654,
-      "per_class": {
-        "low": {
-          "precision": 0.9738,
-          "recall": 0.8946,
-          "f1-score": 0.9325
-        },
-        "medium": {
-          "precision": 0.3818,
-          "recall": 0.4953,
-          "f1-score": 0.4312
-        },
-        "high": {
-          "precision": 0.5701,
-          "recall": 0.7099,
-          "f1-score": 0.6324
-        }
-      },
-      "confusion_matrix_rows_true_cols_pred": [
-        [
-          2342,
-          242,
-          34
-        ],
-        [
-          58,
-          210,
-          156
-        ],
-        [
-          5,
-          98,
-          252
-        ]
-      ]
-    }
-  },
-  "hybrid": {
-    "accuracy": 0.8272,
-    "macro_f1": 0.6706,
-    "per_class": {
-      "low": {
-        "precision": 0.9738,
-        "recall": 0.8946,
-        "f1-score": 0.9325
-      },
-      "medium": {
-        "precision": 0.3857,
-        "recall": 0.5094,
-        "f1-score": 0.439
-      },
-      "high": {
-        "precision": 0.5833,
-        "recall": 0.7099,
-        "f1-score": 0.6404
-      }
-    },
-    "confusion_matrix_rows_true_cols_pred": [
-      [
-        2342,
-        246,
-        30
-      ],
-      [
-        58,
-        216,
-        150
-      ],
-      [
-        5,
-        98,
-        252
-      ]
-    ]
-  },
   "auc_high_vs_rest": {
-    "classical": 0.9335,
-    "transformer": 0.9499,
-    "hybrid": 0.9511,
+    "classical_baseline": 0.9334,
+    "transformer": 0.9548,
     "rnn_lstm_baseline": 0.9201
   },
   "calibration_ece": {
-    "classical_raw": 0.0345,
-    "classical_calibrated": 0.0294,
-    "transformer_raw": 0.0252,
-    "transformer_calibrated": 0.0117,
-    "hybrid": 0.0128
+    "transformer_raw": 0.0268,
+    "transformer_calibrated": 0.0084,
+    "classical_baseline_raw": 0.0345
   },
-  "ablation_with_recommended_ind_classical_argmax": {
-    "accuracy": 0.8646,
-    "macro_f1": 0.6427,
-    "per_class": {
-      "low": {
-        "precision": 0.9279,
-        "recall": 0.9885,
-        "f1-score": 0.9573
-      },
-      "medium": {
-        "precision": 0.48,
-        "recall": 0.2264,
-        "f1-score": 0.3077
-      },
-      "high": {
-        "precision": 0.6201,
-        "recall": 0.7127,
-        "f1-score": 0.6632
-      }
-    },
-    "confusion_matrix_rows_true_cols_pred": [
-      [
-        2588,
-        21,
-        9
-      ],
-      [
-        182,
-        96,
-        146
-      ],
-      [
-        19,
-        83,
-        253
-      ]
-    ]
-  },
-  "fair_comparison_each_retuned_on_validation": {
-    "hybrid": {
+  "each_tuned_on_validation": {
+    "served_system": {
       "thresholds_t_high_t_medium": [
-        0.375,
-        0.2
+        0.45,
+        0.25
       ],
-      "macro_f1": 0.6706,
-      "high_recall": 0.7099,
-      "high_precision": 0.5833
+      "macro_f1": 0.689,
+      "high_recall": 0.6761,
+      "high_precision": 0.6383
     },
-    "transformer_alone": {
-      "thresholds_t_high_t_medium": [
-        0.375,
-        0.225
-      ],
-      "macro_f1": 0.6669,
-      "high_recall": 0.7099,
-      "high_precision": 0.5701
-    },
-    "classical_alone": {
+    "classical_baseline": {
       "thresholds_t_high_t_medium": [
         0.225,
         0.25
@@ -367,30 +236,128 @@
       "high_precision": 0.5
     }
   },
-  "age_ablation": {
-    "hybrid_with_age_macro_f1": 0.6734,
-    "note": "compare with the shipped hybrid (no Age) under fair_comparison_each_retuned_on_validation"
+  "ablation_blend_classical_back_in": {
+    "weight": 0.1,
+    "thresholds_t_high_t_medium": [
+      0.425,
+      0.275
+    ],
+    "macro_f1": 0.696,
+    "high_recall": 0.7042,
+    "high_precision": 0.6394,
+    "auc_high_vs_rest": 0.9556
+  },
+  "ablation_with_recommended_ind_classical_argmax": {
+    "without": {
+      "accuracy": 0.8275,
+      "macro_f1": 0.5885,
+      "per_class": {
+        "low": {
+          "precision": 0.8747,
+          "recall": 0.9729,
+          "f1-score": 0.9212
+        },
+        "medium": {
+          "precision": 0.4468,
+          "recall": 0.2476,
+          "f1-score": 0.3187
+        },
+        "high": {
+          "precision": 0.636,
+          "recall": 0.4479,
+          "f1-score": 0.5256
+        }
+      },
+      "confusion_matrix_rows_true_cols_pred": [
+        [
+          2547,
+          52,
+          19
+        ],
+        [
+          247,
+          105,
+          72
+        ],
+        [
+          118,
+          78,
+          159
+        ]
+      ]
+    },
+    "with": {
+      "accuracy": 0.8646,
+      "macro_f1": 0.6427,
+      "per_class": {
+        "low": {
+          "precision": 0.9279,
+          "recall": 0.9885,
+          "f1-score": 0.9573
+        },
+        "medium": {
+          "precision": 0.48,
+          "recall": 0.2264,
+          "f1-score": 0.3077
+        },
+        "high": {
+          "precision": 0.6201,
+          "recall": 0.7127,
+          "f1-score": 0.6632
+        }
+      },
+      "confusion_matrix_rows_true_cols_pred": [
+        [
+          2588,
+          21,
+          9
+        ],
+        [
+          182,
+          96,
+          146
+        ],
+        [
+          19,
+          83,
+          253
+        ]
+      ]
+    }
+  },
+  "age_ablation_classical_argmax_macro_f1": {
+    "without_age": 0.5885,
+    "with_age": 0.5929
   },
   "triage": {
     "action_share": {
-      "auto_reply": 0.7018,
-      "manual_review": 0.171,
-      "escalate_immediately": 0.1272
+      "auto_reply": 0.7109,
+      "manual_review": 0.1784,
+      "escalate_immediately": 0.1107
     },
-    "human_review_share": 0.2982,
+    "human_review_share": 0.2891,
     "review_trigger_share": {
-      "conflicted": 0.0003,
-      "low_confidence": 0.0347,
-      "models_disagree": 0.055,
+      "conflicted": 0.0012,
+      "low_confidence": 0.0206,
       "short_text": 0.0018,
       "noisy_text": 0.0003,
       "non_english": 0.0006
     },
     "truly_high_cases": 355,
-    "truly_high_auto_replied": 5,
-    "truly_high_reaching_human": 350,
-    "auto_reply_precision_low": 0.9753,
-    "recall_of_truly_low_auto_replied": 0.8881
+    "truly_high_predicted_high": 240,
+    "truly_high_predicted_medium": 106,
+    "truly_high_auto_replied": 9,
+    "truly_high_reaching_human": 346,
+    "auto_reply_precision_low": 0.9706,
+    "recall_of_truly_low_auto_replied": 0.8953,
+    "review_triggers_value": {
+      "cases_the_tier_alone_would_auto_reply": 2423,
+      "withheld_by_a_trigger": 8,
+      "share_not_low_among_withheld": 0.125,
+      "share_not_low_among_still_auto_replied": 0.029,
+      "truly_high_among_withheld": 0,
+      "truly_high_among_still_auto_replied": 9
+    }
   },
   "historical_reference_old_hybrid": {
     "note": "Measured on this same test split BEFORE the redesign (old models, constant CNN=0.4, thresholds 0.45/0.75).",

@@ -1,27 +1,15 @@
 """
-Hybrid scoring and end-to-end inference.
+End-to-end inference: DistilBERT probabilities -> deterministic decision -> optional LLM explanation.
 
-Components that make the decision (all deterministic once trained):
-  * classical ML  - TF-IDF + tabular features -> Logistic Regression
-  * transformer   - fine-tuned DistilBERT on the review text (int8-compressed weights)
-Their calibrated class probabilities are blended and mapped to a risk level by
-decision.py using parameters tuned on the validation split (decision_config.json).
-The LLM (llm_explainer.py) only EXPLAINS the result; it cannot change it.
+A fine-tuned DistilBERT (int8-compressed weights) reads the review text. Its calibrated class
+probabilities are turned into a risk tier, an action and a human-review flag by decision.py, using
+parameters tuned on the validation split (models/decision_config.json). The LLM (llm_explainer.py)
+only EXPLAINS the result; it cannot change it.
 
-Only the image-free text path exists: `image` / `image_available` fields in a payload are ignored.
+Input: only `review_text` is used. The other fields of the original dataset (age, feedback count,
+division/department/class, `recommended_ind`, images) are accepted for compatibility and ignored.
 
---------------------------------------------------------------------------
-Input schema (mirrors the Women's E-Commerce Clothing Reviews columns)
---------------------------------------------------------------------------
-    {
-        "customer_id": "C001",            # optional, echoed nowhere sensitive
-        "review_text": "The zipper is broken ...",
-        "positive_feedback_count": 2,
-        "division_name": "General",
-        "department_name": "Dresses",
-        "class_name": "Dresses"
-    }
-`recommended_ind` is accepted but ignored (label-leakage feature, see risk_common.py).
+    {"review_text": "The zipper is broken and nobody answered my emails."}
 
 Smoke test:  python -m hybrid_risk.hybrid_inference
 """
@@ -31,30 +19,18 @@ import math
 import os
 import threading
 
-import joblib
 import numpy as np
-import pandas as pd
 
 from hybrid_risk import text_checks
 from hybrid_risk.decision import action_for, assess, final_score, load_config, review_reasons
 from hybrid_risk.llm_explainer import explain_decision
-from hybrid_risk.paths import MODELS, SAMPLES
-from hybrid_risk.risk_common import CLASSES, FEATURE_COLUMNS, proba_to_score, reorder_proba
-
-CLASSICAL_MODEL_PATH = str(MODELS / "classical_model.pkl")
+from hybrid_risk.paths import SAMPLES
+from hybrid_risk.risk_common import CLASSES
 
 MIN_WORDS = text_checks.MIN_WORDS  # shorter texts give the text models too little to go on -> force review
 
-_classical_model = None
 _transformer = None
 _infer_lock = threading.Lock()  # one transformer forward pass at a time: queueing beats thread thrashing
-
-
-def _load_classical():
-    global _classical_model
-    if _classical_model is None:
-        _classical_model = joblib.load(CLASSICAL_MODEL_PATH)
-    return _classical_model
 
 
 def cpu_limit():
@@ -92,12 +68,6 @@ def _load_transformer():
     return _transformer
 
 
-def classical_proba(df):
-    """(N, 3) probabilities in CLASSES order from a DataFrame with FEATURE_COLUMNS."""
-    model = _load_classical()
-    return reorder_proba(model.predict_proba(df[FEATURE_COLUMNS]), model.classes_)
-
-
 def transformer_proba(texts, batch_size=32, max_len=128):
     """(N, 3) probabilities in CLASSES order from the fine-tuned DistilBERT."""
     import torch
@@ -110,16 +80,6 @@ def transformer_proba(texts, batch_size=32, max_len=128):
                       padding=True, return_tensors="pt")
             out.append(torch.softmax(model(**enc).logits, dim=-1).numpy())
     return np.concatenate(out)
-
-
-def _input_frame(input_data):
-    return pd.DataFrame([{
-        "Review Text": input_data["review_text"],
-        "Positive Feedback Count": input_data["positive_feedback_count"],
-        "Division Name": input_data["division_name"],
-        "Department Name": input_data["department_name"],
-        "Class Name": input_data["class_name"],
-    }])
 
 
 def text_flags(texts, cfg=None):
@@ -135,23 +95,17 @@ def text_flags(texts, cfg=None):
 
 
 def predict_hybrid(input_data, explain=True):
-    """Run the two text models, decide deterministically, then (optionally) explain."""
+    """Run DistilBERT, decide deterministically, then (optionally) explain."""
     cfg = load_config()
-    df = _input_frame(input_data)
     text = str(input_data["review_text"])
 
-    p_cl = classical_proba(df)
-    p_tx = transformer_proba([text])
-
-    result = assess(p_cl, p_tx, cfg, extra_flags=text_flags([text], cfg))
+    result = assess(transformer_proba([text]), cfg, extra_flags=text_flags([text], cfg))
     level = str(result["level"][0])
     review = bool(result["review"][0])
     reasons = review_reasons(result["flags"])
     p_final = result["p_final"]
 
     model_outputs = {
-        "classical_score": round(float(proba_to_score(result["p_classical"], CLASSES)[0]), 3),
-        "transformer_score": round(float(proba_to_score(result["p_text"], CLASSES)[0]), 3),
         "final_score": round(float(final_score(p_final)[0]), 3),
         "probabilities": {c: round(float(p), 3) for c, p in zip(CLASSES, p_final[0])},
         "risk_level": level,

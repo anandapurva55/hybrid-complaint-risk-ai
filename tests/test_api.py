@@ -8,7 +8,7 @@ VALID = {"review_text": "The zipper broke after one wear and support never repli
          "class_name": "Dresses"}
 
 FAKE_RESULT = {
-    "model_outputs": {"classical_score": 0.5, "transformer_score": 0.4, "final_score": 0.45,
+    "model_outputs": {"final_score": 0.45,
                       "probabilities": {"low": 0.3, "medium": 0.3, "high": 0.4}, "risk_level": "high",
                       "recommended_action": "escalate_immediately", "human_review_required": True,
                       "review_reasons": []},
@@ -48,9 +48,10 @@ def test_validation_rejects_bad_input(client, patch):
     assert client.post("/predict", json={**VALID, **patch}).status_code == 422
 
 
-def test_missing_field_rejected(client):
+def test_only_review_text_is_required(client):
+    assert client.post("/predict", json={"review_text": "The zipper broke and nobody answered."}).status_code == 200
     bad = dict(VALID)
-    bad.pop("class_name")
+    bad.pop("review_text")
     assert client.post("/predict", json=bad).status_code == 422
 
 

@@ -35,7 +35,7 @@ def style(ax):
 def overview():
     ev = json.load(open(ROOT / "results" / "evaluation_results.json"))
     old = ev["historical_reference_old_hybrid"]
-    new = ev["hybrid"]
+    new = ev["system"]
     metrics = ["Recall on high", "Precision on high", "Macro-F1"]
     v_old = [old["high_recall"], old["high_precision"], old["macro_f1"]]
     v_new = [new["per_class"]["high"]["recall"], new["per_class"]["high"]["precision"], new["macro_f1"]]
@@ -44,7 +44,7 @@ def overview():
     x, w = np.arange(3), 0.36
     style(a)
     r1 = a.bar(x - w / 2 - 0.01, v_old, w, color=GREY, label="Original version (constant CNN term)")
-    r2 = a.bar(x + w / 2 + 0.01, v_new, w, color=BLUE, label="Current (classical + DistilBERT)")
+    r2 = a.bar(x + w / 2 + 0.01, v_new, w, color=BLUE, label="Current (DistilBERT + review rules)")
     for bars in (r1, r2):
         for r in bars:
             a.text(r.get_x() + r.get_width() / 2, r.get_height() + 0.015, f"{r.get_height():.2f}", ha="center", fontsize=10, color=INK)

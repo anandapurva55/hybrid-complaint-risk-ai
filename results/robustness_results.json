@@ -1,134 +1,115 @@
 {
   "bootstrap_95ci": {
-    "hybrid": {
+    "served_system": {
       "macro_f1": [
-        0.6498,
-        0.6915
+        0.6674,
+        0.7098
       ],
       "high_recall": [
-        0.6602,
-        0.755
+        0.626,
+        0.7232
       ],
       "high_precision": [
-        0.5399,
-        0.6291
+        0.59,
+        0.6878
       ]
     },
-    "transformer_alone": {
+    "with_classical_blended_back_in": {
       "macro_f1": [
-        0.6467,
-        0.6872
+        0.6744,
+        0.7169
       ],
       "high_recall": [
-        0.661,
-        0.756
+        0.6547,
+        0.7515
       ],
       "high_precision": [
-        0.5261,
-        0.6145
+        0.5918,
+        0.6842
       ]
     },
-    "hybrid_minus_transformer_macro_f1": [
-      -0.0013,
-      0.0094
+    "blend_minus_system_macro_f1": [
+      -0.0004,
+      0.0147
     ],
     "n_boot": 1000
-  },
-  "classical_5fold_cv_argmax": {
-    "f1_macro": [
-      0.5849,
-      0.0097
-    ],
-    "accuracy": [
-      0.8269,
-      0.0049
-    ]
   },
   "subgroups": {
     "age_band": {
       "<30": {
         "n": 441,
-        "macro_f1": 0.662,
-        "high_recall": 0.75,
+        "macro_f1": 0.7,
+        "high_recall": 0.731,
         "n_true_high": 52,
-        "auto_reply_share": 0.673,
-        "true_high_auto_replied": 0.0
+        "auto_reply_share": 0.669,
+        "true_high_auto_replied": 0.019
       },
       "30-45": {
         "n": 1624,
-        "macro_f1": 0.673,
-        "high_recall": 0.696,
+        "macro_f1": 0.68,
+        "high_recall": 0.658,
         "n_true_high": 161,
-        "auto_reply_share": 0.704,
-        "true_high_auto_replied": 0.019
+        "auto_reply_share": 0.713,
+        "true_high_auto_replied": 0.031
       },
       "46-60": {
         "n": 980,
-        "macro_f1": 0.672,
-        "high_recall": 0.712,
+        "macro_f1": 0.696,
+        "high_recall": 0.649,
         "n_true_high": 111,
-        "auto_reply_share": 0.693,
-        "true_high_auto_replied": 0.009
+        "auto_reply_share": 0.714,
+        "true_high_auto_replied": 0.018
       },
       "60+": {
         "n": 352,
-        "macro_f1": 0.659,
-        "high_recall": 0.71,
+        "macro_f1": 0.691,
+        "high_recall": 0.774,
         "n_true_high": 31,
-        "auto_reply_share": 0.753,
+        "auto_reply_share": 0.744,
         "true_high_auto_replied": 0.032
       }
     },
     "Department Name": {
       "Bottoms": {
         "n": 543,
-        "macro_f1": 0.631,
-        "high_recall": 0.604,
+        "macro_f1": 0.693,
+        "high_recall": 0.688,
         "n_true_high": 48,
-        "auto_reply_share": 0.713,
+        "auto_reply_share": 0.716,
         "true_high_auto_replied": 0.021
       },
       "Dresses": {
         "n": 973,
-        "macro_f1": 0.665,
-        "high_recall": 0.722,
+        "macro_f1": 0.666,
+        "high_recall": 0.667,
         "n_true_high": 108,
-        "auto_reply_share": 0.664,
-        "true_high_auto_replied": 0.009
+        "auto_reply_share": 0.674,
+        "true_high_auto_replied": 0.037
       },
       "Intimate": {
         "n": 247,
-        "macro_f1": 0.688,
-        "high_recall": 0.647,
+        "macro_f1": 0.708,
+        "high_recall": 0.706,
         "n_true_high": 17,
-        "auto_reply_share": 0.745,
+        "auto_reply_share": 0.773,
         "true_high_auto_replied": 0.059
       },
       "Jackets": {
         "n": 133,
-        "macro_f1": 0.695,
-        "high_recall": 0.762,
+        "macro_f1": 0.706,
+        "high_recall": 0.714,
         "n_true_high": 21,
         "auto_reply_share": 0.707,
         "true_high_auto_replied": 0.0
       },
       "Tops": {
         "n": 1486,
-        "macro_f1": 0.683,
-        "high_recall": 0.733,
+        "macro_f1": 0.702,
+        "high_recall": 0.671,
         "n_true_high": 161,
-        "auto_reply_share": 0.715,
-        "true_high_auto_replied": 0.012
+        "auto_reply_share": 0.723,
+        "true_high_auto_replied": 0.019
       }
-    }
-  },
-  "ordinal_experiment": {
-    "note": "best test macro-F1 over a threshold grid (optimistic, for comparing model forms only)",
-    "multinomial_classical": 0.6468,
-    "cumulative_binary_ordinal": 0.6439,
-    "auc_high": {
-      "multinomial": 0.9335,
-      "ordinal": 0.9291
     }
   }
 }

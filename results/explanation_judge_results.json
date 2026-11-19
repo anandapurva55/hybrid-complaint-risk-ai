@@ -1,0 +1,24 @@
+{
+  "judge_model": "us.anthropic.claude-sonnet-4-6",
+  "n_cases": 44,
+  "n_judgements": 88,
+  "note": "LLM judge, a PROXY and not human evidence; each case judged twice with A/B order swapped",
+  "mean_scores_1_to_5": {
+    "llm": {
+      "faithful": 3.98,
+      "useful": 3.47,
+      "clear": 3.75
+    },
+    "template": {
+      "faithful": 3.56,
+      "useful": 2.74,
+      "clear": 3.45
+    }
+  },
+  "preference": {
+    "llm": 0.705,
+    "template": 0.227,
+    "tie": 0.068
+  },
+  "position_bias_check_same_preference_in_both_orders": 0.818
+}

@@ -1,0 +1,21 @@
+{
+  "setup": "deployed ECS Fargate task (2 vCPU / 4 GB, x86), one task, through CloudFront, from a laptop, LLM_PROVIDER=bedrock (Nova Lite), real test reviews",
+  "results": [
+    {
+      "concurrency": 1,
+      "requests": 40,
+      "throughput_rps": 0.65,
+      "latency_ms_p50": 1426,
+      "latency_ms_p95": 2292,
+      "latency_ms_max": 2881
+    },
+    {
+      "concurrency": 4,
+      "requests": 40,
+      "throughput_rps": 2.45,
+      "latency_ms_p50": 1491,
+      "latency_ms_p95": 2515,
+      "latency_ms_max": 3256
+    }
+  ]
+}

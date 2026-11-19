@@ -21,12 +21,15 @@ from hybrid_risk.paths import DATA_PROCESSED, MODELS, RESULTS
 from hybrid_risk.risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE
 
 BASE = "distilbert-base-uncased"
-OUT_DIR = str(MODELS / "transformer_fp32")
+OUT_DIR = str(MODELS / "transformer_fp32")  # overridden by --out-dir
 MAX_LEN, BATCH, EPOCHS, LR = 128, 32, 2, 3e-5
 
 _ap = argparse.ArgumentParser()
 _ap.add_argument("--seed", type=int, default=RANDOM_STATE)
-SEED = _ap.parse_args().seed
+_ap.add_argument("--synthetic", action="store_true", help="also train on data/synthetic/train.jsonl (LLM-written sarcasm and negation)")
+_ap.add_argument("--out-dir", default=None, help="where to save the fp32 model (default models/transformer_fp32)")
+_args = _ap.parse_args()
+SEED = _args.seed
 torch.manual_seed(SEED)
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 tok = AutoTokenizer.from_pretrained(BASE)
@@ -58,6 +61,13 @@ def predict(texts):
 
 def main():
     tr_t, tr_y = load("train"); va_t, va_y = load("val"); te_t, te_y = load("test")
+    if _args.synthetic:
+        import json as _json
+        from hybrid_risk.paths import ROOT as _ROOT
+        syn = [_json.loads(l) for l in open(_ROOT / "data" / "synthetic" / "train.jsonl")]
+        tr_t = tr_t + [r["text"] for r in syn]
+        tr_y = np.concatenate([tr_y, np.array([CLASSES.index(r["tier"]) for r in syn])])
+        print(f"training on {len(tr_t) - len(syn)} real + {len(syn)} synthetic reviews", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
     steps = EPOCHS * ((len(tr_t) + BATCH - 1) // BATCH)
     sched = torch.optim.lr_scheduler.LinearLR(opt, 1.0, 0.0, total_iters=steps)
@@ -87,7 +97,8 @@ def main():
         print(rec)
         return
     print("test macro-F1 (argmax)", round(f1_score(te_y, pt.argmax(1), average="macro"), 3))
-    model.save_pretrained(OUT_DIR); tok.save_pretrained(OUT_DIR)
+    out_dir = _args.out_dir or OUT_DIR
+    model.save_pretrained(out_dir); tok.save_pretrained(out_dir)
 
 
 if __name__ == "__main__":

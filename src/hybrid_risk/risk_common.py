@@ -6,8 +6,8 @@ PROXY derived from the customer's star rating (see rating_to_risk), so the
 system really predicts "how dissatisfied is this customer's feedback", which
 is used as a stand-in for escalation risk. See README "What this is, and is not".
 
-Every trained text component (classical ML, RNN) predicts the same 3-class
-target (low / medium / high) and returns a probability vector in CLASSES order.
+Every trained text model (the served DistilBERT and the classical / LSTM baselines) predicts the same
+3-class target (low / medium / high) and returns a probability vector in CLASSES order.
 Probabilities (not a collapsed scalar) are what the decision layer in
 decision.py works on, because an expected-value score cannot tell a confident
 "medium" from a 50/50 split between "low" and "high".

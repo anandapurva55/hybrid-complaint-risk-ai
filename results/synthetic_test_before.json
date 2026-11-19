@@ -1,0 +1,26 @@
+{
+  "split": "test",
+  "results": {
+    "negated_negative": {
+      "n": 45,
+      "right": 1.0,
+      "auto_replied": 0.0,
+      "escalated_as_high": 1.0,
+      "mean_P_high": 0.749
+    },
+    "negated_positive": {
+      "n": 45,
+      "right": 0.978,
+      "auto_replied": 0.756,
+      "escalated_as_high": 0.022,
+      "mean_P_high": 0.046
+    },
+    "sarcastic_complaint": {
+      "n": 90,
+      "right": 0.367,
+      "auto_replied": 0.633,
+      "escalated_as_high": 0.133,
+      "mean_P_high": 0.118
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "setup": "deployed ECS Fargate task (2 vCPU / 4 GB, x86), one task, through CloudFront, from a laptop, LLM_PROVIDER=template, real test reviews",
+  "results": [
+    {
+      "concurrency": 1,
+      "requests": 300,
+      "throughput_rps": 2.8,
+      "latency_ms_p50": 345,
+      "latency_ms_p95": 427,
+      "latency_ms_max": 510
+    },
+    {
+      "concurrency": 4,
+      "requests": 300,
+      "throughput_rps": 9.98,
+      "latency_ms_p50": 386,
+      "latency_ms_p95": 488,
+      "latency_ms_max": 628
+    },
+    {
+      "concurrency": 8,
+      "requests": 300,
+      "throughput_rps": 10.31,
+      "latency_ms_p50": 755,
+      "latency_ms_p95": 908,
+      "latency_ms_max": 1046
+    }
+  ]
+}

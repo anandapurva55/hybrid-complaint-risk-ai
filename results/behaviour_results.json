@@ -16,11 +16,9 @@
   "negative_heavy_typos": {
     "n": 36,
     "want": "caught",
-    "caught_by_model_tier_alone": 0.917,
-    "caught_with_review_rules": 0.972,
-    "examples_that_missed": [
-      "The saem toer oen on day two and the coolr blled all ovver my other clothes."
-    ]
+    "caught_by_model_tier_alone": 0.944,
+    "caught_with_review_rules": 1.0,
+    "examples_that_missed": []
   },
   "negative_ALL_CAPS": {
     "n": 12,
@@ -32,7 +30,7 @@
   "negative_non_english": {
     "n": 5,
     "want": "caught",
-    "caught_by_model_tier_alone": 0.8,
+    "caught_by_model_tier_alone": 0.6,
     "caught_with_review_rules": 1.0,
     "examples_that_missed": []
   },
@@ -46,10 +44,9 @@
   "negative_sarcastic_KNOWN_LIMITATION": {
     "n": 5,
     "want": "caught",
-    "caught_by_model_tier_alone": 0.6,
-    "caught_with_review_rules": 0.6,
+    "caught_by_model_tier_alone": 0.8,
+    "caught_with_review_rules": 0.8,
     "examples_that_missed": [
-      "Wow, I love paying full price for fabric that feels like sandpaper.",
       "Thanks so much for the lovely hole in the sleeve, it really completes the look."
     ]
   },
@@ -81,8 +78,8 @@
   "negation_directional": {
     "n_pairs": 9,
     "pass_rate": 1.0,
-    "mean_P_high_negated_negative": 0.752,
-    "mean_P_high_negated_positive": 0.104
+    "mean_P_high_negated_negative": 0.899,
+    "mean_P_high_negated_positive": 0.006
   },
   "ALL_CAPS_keeps_the_same_tier": {
     "n": 22,
