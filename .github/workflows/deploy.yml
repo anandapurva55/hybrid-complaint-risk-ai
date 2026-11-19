@@ -22,7 +22,7 @@ jobs:
         with: { python-version: "3.11", cache: pip, cache-dependency-path: requirements.txt }
       - name: Tests (gate the deploy)
         run: |
-          pip install -r requirements.txt pytest==9.2.0 httpx==0.28.1 cfn-lint
+          pip install -r requirements.txt scikit-learn==1.9.1 pandas==3.1.1 joblib==1.6.0 pytest==9.2.0 httpx==0.28.1 cfn-lint
           python -m pytest -q
           cfn-lint deploy/*.yaml
       - uses: aws-actions/configure-aws-credentials@v4
