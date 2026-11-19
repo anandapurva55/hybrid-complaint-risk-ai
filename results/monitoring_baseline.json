@@ -1,8 +1,8 @@
 {
   "source": "test split",
   "action_share": {
-    "auto_reply": 0.7071,
-    "manual_review": 0.1657,
+    "auto_reply": 0.7018,
+    "manual_review": 0.171,
     "escalate_immediately": 0.1272
   },
   "mean_top_probability": 0.855

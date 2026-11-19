@@ -46,6 +46,21 @@ def fit_temperature(proba, y_idx):
     return round(best_t, 2)
 
 
+def tune_thresholds(p, y, target_recall=TARGET_HIGH_RECALL):
+    """(t_high, t_medium, macro_f1, recall_high): among thresholds whose recall on 'high' reaches
+    `target_recall`, the pair with the best macro-F1; if none reach it, the highest recall."""
+    rows = []
+    for t_high in np.round(np.arange(0.10, 0.71, 0.025), 3):
+        for t_med in np.round(np.arange(0.20, 0.81, 0.025), 3):
+            pred = decide_levels(p, t_high, t_med)
+            rows.append((float(t_high), float(t_med), f1_score(y, pred, labels=CLASSES, average="macro"),
+                         recall_score(y, pred, labels=["high"], average=None, zero_division=0)[0]))
+    grid = pd.DataFrame(rows, columns=["t_high", "t_medium", "macro_f1", "recall_high"])
+    ok = grid[grid.recall_high >= target_recall]
+    best = (ok.sort_values("macro_f1", ascending=False) if len(ok) else grid.sort_values("recall_high", ascending=False)).iloc[0]
+    return float(best.t_high), float(best.t_medium), float(best.macro_f1), float(best.recall_high)
+
+
 def main():
     df, p_cl, p_rn = load_probas("val")
     y = df[TARGET].to_numpy()
@@ -63,20 +78,9 @@ def main():
     w = min(nll_by_w, key=nll_by_w.get)
     print(f"Blend weight (min val log-loss): w_classical={w}  nll={nll_by_w[w]:.4f}")
 
-    rows = []
     p = blend(pc, pr, w)
-    for t_high in np.round(np.arange(0.10, 0.71, 0.025), 3):
-        for t_med in np.round(np.arange(0.20, 0.81, 0.025), 3):
-            pred = decide_levels(p, t_high, t_med)
-            rows.append({
-                "w": float(w), "t_high": float(t_high), "t_medium": float(t_med),
-                "macro_f1": f1_score(y, pred, labels=CLASSES, average="macro"),
-                "recall_high": recall_score(y, pred, labels=["high"], average=None)[0],
-            })
-    grid = pd.DataFrame(rows)
-    ok = grid[grid.recall_high >= TARGET_HIGH_RECALL]
-    best = (ok.sort_values("macro_f1", ascending=False) if len(ok)
-            else grid.sort_values("recall_high", ascending=False)).iloc[0]
+    t_high, t_med, best_f1, best_recall = tune_thresholds(p, y)
+    best = pd.Series({"w": float(w), "t_high": t_high, "t_medium": t_med, "macro_f1": best_f1, "recall_high": best_recall})
     print("Selected (validation):", best.to_dict())
 
     cfg = dict(DEFAULT_CONFIG)

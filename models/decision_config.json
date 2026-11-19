@@ -4,15 +4,17 @@
     "temp_classical": 0.9,
     "temp_text": 1.15,
     "t_high": 0.375,
-    "t_medium": 0.225,
+    "t_medium": 0.2,
     "conflict_min": 0.3,
     "max_proba_floor": 0.45,
-    "disagreement_tv": 0.45
+    "disagreement_tv": 0.45,
+    "noisy_pieces_per_word": 1.5,
+    "min_english_share": 0.1
   },
   "selection": {
     "split": "val",
     "target_high_recall": 0.7,
-    "val_macro_f1": 0.6825,
+    "val_macro_f1": 0.6815,
     "val_recall_high": 0.7022
   }
 }

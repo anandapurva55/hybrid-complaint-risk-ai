@@ -1,0 +1,91 @@
+{
+  "negative_clean": {
+    "n": 12,
+    "want": "caught",
+    "caught_by_model_tier_alone": 1.0,
+    "caught_with_review_rules": 1.0,
+    "examples_that_missed": []
+  },
+  "negative_mild_typos": {
+    "n": 36,
+    "want": "caught",
+    "caught_by_model_tier_alone": 1.0,
+    "caught_with_review_rules": 1.0,
+    "examples_that_missed": []
+  },
+  "negative_heavy_typos": {
+    "n": 36,
+    "want": "caught",
+    "caught_by_model_tier_alone": 0.917,
+    "caught_with_review_rules": 0.972,
+    "examples_that_missed": [
+      "The saem toer oen on day two and the coolr blled all ovver my other clothes."
+    ]
+  },
+  "negative_ALL_CAPS": {
+    "n": 12,
+    "want": "caught",
+    "caught_by_model_tier_alone": 1.0,
+    "caught_with_review_rules": 1.0,
+    "examples_that_missed": []
+  },
+  "negative_non_english": {
+    "n": 5,
+    "want": "caught",
+    "caught_by_model_tier_alone": 0.8,
+    "caught_with_review_rules": 1.0,
+    "examples_that_missed": []
+  },
+  "negative_mixed_sentiment": {
+    "n": 6,
+    "want": "caught",
+    "caught_by_model_tier_alone": 1.0,
+    "caught_with_review_rules": 1.0,
+    "examples_that_missed": []
+  },
+  "negative_sarcastic_KNOWN_LIMITATION": {
+    "n": 5,
+    "want": "caught",
+    "caught_by_model_tier_alone": 0.6,
+    "caught_with_review_rules": 0.6,
+    "examples_that_missed": [
+      "Wow, I love paying full price for fabric that feels like sandpaper.",
+      "Thanks so much for the lovely hole in the sleeve, it really completes the look."
+    ]
+  },
+  "positive_clean": {
+    "n": 10,
+    "want": "auto_reply",
+    "auto_reply_rate": 1.0,
+    "escalated_as_high": 0.0,
+    "examples_that_missed": []
+  },
+  "positive_mild_typos_cost_of_the_noise_trigger": {
+    "n": 30,
+    "want": "auto_reply",
+    "auto_reply_rate": 0.667,
+    "escalated_as_high": 0.0,
+    "examples_that_missed": [
+      "Beautifl drses, great quality fabrc, I got so many compliments.",
+      "Beautful dress, great quality fbaric, I got so mny compliments.",
+      "Supr comfortable and true to size, I wlil defiitely buy another."
+    ]
+  },
+  "positive_ALL_CAPS": {
+    "n": 10,
+    "want": "auto_reply",
+    "auto_reply_rate": 1.0,
+    "escalated_as_high": 0.0,
+    "examples_that_missed": []
+  },
+  "negation_directional": {
+    "n_pairs": 9,
+    "pass_rate": 1.0,
+    "mean_P_high_negated_negative": 0.752,
+    "mean_P_high_negated_positive": 0.104
+  },
+  "ALL_CAPS_keeps_the_same_tier": {
+    "n": 22,
+    "rate": 1.0
+  }
+}

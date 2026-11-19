@@ -40,6 +40,8 @@ DEFAULT_CONFIG = {
     "conflict_min": 0.30,        # min(P_low, P_high) above this => contradictory evidence
     "max_proba_floor": 0.45,     # top class probability below this => low confidence
     "disagreement_tv": 0.45,     # total-variation distance between the two models
+    "noisy_pieces_per_word": 1.5,  # text_checks.pieces_per_word above this => noisy / misspelled text
+    "min_english_share": 0.10,     # text_checks.english_share below this => probably not English
 }
 
 

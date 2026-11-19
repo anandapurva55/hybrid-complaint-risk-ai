@@ -61,7 +61,7 @@ def decision_pipeline() -> None:
             calib = Custom("Temperature\ncalibration", icon("cal", "T", GREEN))
             blend = Custom("Blend\n0.1 classical +\n0.9 transformer", icon("blend", "p", GREEN))
             thresh = Custom("Thresholds\non probabilities", icon("thr", ">=", GREEN))
-            rules = Custom("Review triggers\n(4 checks)", icon("rules", "!", RED))
+            rules = Custom("Review triggers\n(6 checks)", icon("rules", "!", RED))
         action = Custom("Action\nauto_reply\nmanual_review\nescalate", icon("act", "GO", GREY))
         with Cluster("Explanation only (cannot change the decision)"):
             llm = Bedrock("LLM explainer\nAmazon Bedrock\nNova Lite")
@@ -101,7 +101,7 @@ def release_path() -> None:
     with Diagram("", filename=str(OUT / "release_path"), show=False, direction="LR", graph_attr=GRAPH, node_attr=NODE, outformat="png"):
         gh = GithubActions("GitHub Actions\n(approved in the\nproduction environment)")
         with Cluster("Gates"):
-            tests = Codebuild("68 tests")
+            tests = Codebuild("88 tests")
             lint = Codebuild("cfn-lint")
         img = Docker("Build image\nlinux/amd64")
         ecr = ECR("ECR")

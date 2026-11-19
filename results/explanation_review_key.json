@@ -1,0 +1,74 @@
+{
+  "1": {
+    "A": "template",
+    "B": "llm"
+  },
+  "2": {
+    "A": "template",
+    "B": "llm"
+  },
+  "3": {
+    "A": "template",
+    "B": "llm"
+  },
+  "4": {
+    "A": "template",
+    "B": "llm"
+  },
+  "5": {
+    "A": "llm",
+    "B": "template"
+  },
+  "6": {
+    "A": "template",
+    "B": "llm"
+  },
+  "7": {
+    "A": "template",
+    "B": "llm"
+  },
+  "8": {
+    "A": "template",
+    "B": "llm"
+  },
+  "9": {
+    "A": "template",
+    "B": "llm"
+  },
+  "10": {
+    "A": "template",
+    "B": "llm"
+  },
+  "11": {
+    "A": "template",
+    "B": "llm"
+  },
+  "12": {
+    "A": "llm",
+    "B": "template"
+  },
+  "13": {
+    "A": "llm",
+    "B": "template"
+  },
+  "14": {
+    "A": "llm",
+    "B": "template"
+  },
+  "15": {
+    "A": "llm",
+    "B": "template"
+  },
+  "16": {
+    "A": "llm",
+    "B": "template"
+  },
+  "17": {
+    "A": "llm",
+    "B": "template"
+  },
+  "18": {
+    "A": "llm",
+    "B": "template"
+  }
+}

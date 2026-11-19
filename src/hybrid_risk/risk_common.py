@@ -24,10 +24,13 @@ CLASSES = ["low", "medium", "high"]
 ORDINAL_WEIGHTS = np.array([0.0, 0.5, 1.0])
 
 TEXT_FEATURE = "Review Text"
-# "Recommended IND" is deliberately NOT a feature: it is a near-direct proxy of
+# Neither "Recommended IND" nor "Age" is a feature. "Recommended IND" is a near-proxy of the star rating the
+# label is derived from (label leakage). "Age" added nothing measurable (dropping it moved macro-F1 by
+# 0.003, within noise) and is demographic-adjacent, so it is not used; fairness by age band is still audited.
+# Original note on "Recommended IND": it is a near-direct proxy of
 # the star rating the label is derived from (label leakage), and a real
 # complaint would not carry it. evaluate_hybrid.py reports the ablation.
-NUMERIC_FEATURES = ["Age", "Positive Feedback Count"]
+NUMERIC_FEATURES = ["Positive Feedback Count"]
 CATEGORICAL_FEATURES = ["Division Name", "Department Name", "Class Name"]
 TARGET = "risk_level"
 

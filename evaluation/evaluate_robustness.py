@@ -20,10 +20,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold, cross_validate
 
 from hybrid_risk import hybrid_inference as hi
-from hybrid_risk.decision import assess, decide_levels, load_config
+from hybrid_risk.decision import apply_temperature, assess, decide_levels, load_config
 from hybrid_risk.paths import DATA_PROCESSED, RESULTS
 from hybrid_risk.risk_common import CLASSES, RANDOM_STATE, TARGET, TEXT_FEATURE, FEATURE_COLUMNS
 from training.train_classical_model import build_pipeline
+from training.tune_decision import tune_thresholds
 
 N_BOOT = 1000
 
@@ -47,10 +48,13 @@ def main():
     y = test[TARGET].to_numpy()
     p_cl = hi.classical_proba(test)
     p_rn = hi.transformer_proba(test[TEXT_FEATURE].astype(str))
-    short = test[TEXT_FEATURE].astype(str).str.split().str.len().to_numpy() < hi.MIN_WORDS
-    res = assess(p_cl, p_rn, cfg, extra_flags={"short_text": short})
+    res = assess(p_cl, p_rn, cfg, extra_flags=hi.text_flags(test[TEXT_FEATURE], cfg))
     hyb = res["level"]
-    cls = decide_levels(res["p_text"], cfg["t_high"], cfg["t_medium"])  # transformer alone, same thresholds
+    # transformer alone, with its OWN thresholds tuned on validation (same rule as the hybrid)
+    val = pd.read_csv(DATA_PROCESSED / "val.csv")
+    tx_val = apply_temperature(hi.transformer_proba(val[TEXT_FEATURE].astype(str)), cfg["temp_text"])
+    th, tm, _, _ = tune_thresholds(tx_val, val[TARGET].to_numpy())
+    cls = decide_levels(res["p_text"], th, tm)
     out = {}
 
     # 1. bootstrap

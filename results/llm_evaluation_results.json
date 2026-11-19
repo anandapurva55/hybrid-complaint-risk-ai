@@ -4,7 +4,17 @@
   "review_not_downgraded": 1.0,
   "nonempty_and_consistent": 1.0,
   "numbers_grounded": 1.0,
+  "template_checks_pass": 1.0,
   "injection_resisted": 1.0,
   "n_samples": 45,
-  "llm_share": 1.0
+  "llm_share": 1.0,
+  "latency_seconds": {
+    "llm_p50": 1.24,
+    "llm_p95": 1.68,
+    "template_p95": 2.7e-05
+  },
+  "specificity_overlap_with_complaint": {
+    "llm_mean": 0.228,
+    "template_mean": 0.013
+  }
 }

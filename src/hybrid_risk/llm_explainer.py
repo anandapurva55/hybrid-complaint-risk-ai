@@ -12,6 +12,8 @@ Security
 * Provider is chosen with LLM_PROVIDER:
     - "bedrock" (default): Amazon Bedrock Converse API using the ambient AWS credentials /
       IAM role (no key in code). BEDROCK_MODEL_ID (default us.amazon.nova-lite-v1:0).
+    - "template": no LLM; a deterministic templated explanation built from the decision (the baseline
+      the LLM has to beat, and a zero-latency, zero-cost option).
     - "none": skip the LLM and always use the local fallback explanation.
   Without AWS credentials a Bedrock call fails and the local fallback is used.
 * Complaint text is untrusted. It is truncated, stripped of our delimiter
@@ -200,6 +202,43 @@ def _fallback_explanation(model_outputs, reason):
     return _enforce_policy(explanation, model_outputs)
 
 
+_REASON_TEXT = {
+    "models_disagree": "the two models disagree",
+    "low_confidence": "the models are not confident",
+    "conflicted": "the evidence points both ways",
+    "short_text": "the text is very short",
+    "noisy_text": "the text looks heavily misspelled",
+    "non_english": "the text does not look like English",
+}
+_ACTION_TEXT = {
+    "auto_reply": "reply automatically",
+    "manual_review": "send to a person for review",
+    "escalate_immediately": "escalate to a senior agent",
+}
+_TIER_TEXT = {
+    "high": "the models put most of the probability on a strongly unhappy review",
+    "medium": "the review looks mixed or neutral",
+    "low": "the review looks clearly positive",
+}
+
+
+def template_explanation(model_outputs):
+    """Deterministic explanation built only from the decision. No LLM, no latency, no cost.
+    It is the baseline the LLM explanation has to beat, and it never mentions the complaint itself."""
+    tier = model_outputs.get("risk_level", "unknown")
+    probs = model_outputs.get("probabilities") or {}
+    pct = lambda k: f"{round(float(probs.get(k, 0)) * 100)}%"
+    reasons = [_REASON_TEXT.get(r, r) for r in (model_outputs.get("review_reasons") or [])]
+    action = _ACTION_TEXT.get(model_outputs.get("recommended_action"), "send to a person for review")
+    out = {
+        "summary": f"Rated {tier} dissatisfaction risk (high {pct('high')}, medium {pct('medium')}, low {pct('low')}). Suggested action: {action}.",
+        "reason": f"This is a {tier}-tier case because {_TIER_TEXT.get(tier, 'of the model output')}."
+                  + (f" A person should look because {', and '.join(reasons)}." if reasons else ""),
+        "risk_notes": [f"Review trigger: {r}." for r in reasons] or ["No review trigger fired."],
+    }
+    return _enforce_policy(out, model_outputs)
+
+
 def explain_decision(input_payload):
     """Generate a structured explanation for a hybrid prediction.
 
@@ -209,6 +248,10 @@ def explain_decision(input_payload):
     the deterministic assessment.
     """
     model_outputs = input_payload.get("model_outputs", {})
+    if LLM_PROVIDER == "template":
+        result = template_explanation(model_outputs)
+        result["_source"] = "template"
+        return result
     prompt = _build_prompt(input_payload)
     last_error = "LLM response malformed"
     for temperature in LLM_ATTEMPT_TEMPERATURES:  # a rejected answer gets one more, slightly warmer, try

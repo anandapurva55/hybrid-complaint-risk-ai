@@ -181,3 +181,19 @@ def test_provider_outage_does_not_retry(monkeypatch):
     monkeypatch.setattr(le, "_generate", down)
     assert le.explain_decision({"complaint_text": "x", "model_outputs": HIGH})["_source"] == "fallback"
     assert len(calls) == 1
+
+
+def test_template_explanation_is_policy_correct_and_grounded():
+    mo = dict(HIGH, probabilities={"low": 0.1, "medium": 0.2, "high": 0.7}, review_reasons=["models_disagree", "noisy_text"])
+    ex = le.template_explanation(mo)
+    assert set(le.REQUIRED_FIELDS) <= set(ex)
+    assert ex["recommended_action"] == "escalate_immediately" and ex["human_review_required"] is True
+    assert le.numbers_grounded(ex, mo) and not le._contradicts_decision(ex, mo)
+    assert "disagree" in ex["reason"] and "misspelled" in ex["reason"]
+
+
+def test_template_provider_needs_no_llm(monkeypatch):
+    monkeypatch.setattr(le, "LLM_PROVIDER", "template")
+    monkeypatch.setattr(le, "_generate", lambda *a, **k: pytest.fail("LLM must not be called"))
+    out = le.explain_decision({"complaint_text": "x", "model_outputs": LOW})
+    assert out["_source"] == "template" and out["recommended_action"] == "auto_reply"

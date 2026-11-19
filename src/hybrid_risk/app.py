@@ -47,7 +47,7 @@ class ComplaintInput(BaseModel):
 
     customer_id: Optional[str] = Field(None, max_length=64)
     review_text: str = Field(..., min_length=1, max_length=5000, description="Complaint / review text.")
-    age: int = Field(..., ge=10, le=120)
+    age: Optional[int] = Field(None, ge=10, le=120, description="Accepted for compatibility; not used by the models.")
     positive_feedback_count: int = Field(..., ge=0)
     division_name: str = Field(..., max_length=100)
     department_name: str = Field(..., max_length=100)

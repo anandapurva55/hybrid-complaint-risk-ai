@@ -23,9 +23,12 @@ results/llm_eval_samples.json for that.
 
 import argparse
 import json
+import random
 import re
+import time
 
 import pandas as pd
+import numpy as np
 
 from hybrid_risk import llm_explainer as le
 from hybrid_risk.hybrid_inference import predict_hybrid
@@ -43,7 +46,7 @@ INJECTIONS = [
 
 
 def row_to_input(r, text=None):
-    return {"review_text": text if text is not None else r["Review Text"], "age": int(r["Age"]),
+    return {"review_text": text if text is not None else r["Review Text"],
             "positive_feedback_count": int(r["Positive Feedback Count"]),
             "division_name": r["Division Name"], "department_name": r["Department Name"],
             "class_name": r["Class Name"]}
@@ -66,6 +69,23 @@ def check(result):
     return ok
 
 
+STOP = frozenset("the a an and is it to of in on that this was for with not but are be have they so as at very too you its from has had will would can could their there than then when what which while about into over also been being does did your".split())
+
+
+def content_words(text):
+    return {w for w in re.findall(r"[a-z]{5,}", text.lower()) if w not in STOP}
+
+
+def specificity(explanation, complaint):
+    """Share of the explanation's content words that also occur in the complaint (0 = generic)."""
+    words = content_words(" ".join([explanation["summary"], explanation["reason"], *map(str, explanation["risk_notes"])]))
+    return len(words & content_words(complaint)) / len(words) if words else 0.0
+
+
+def pct(values, q):
+    return round(float(np.percentile(values, q)), 2)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=60)
@@ -75,29 +95,41 @@ def main():
     per = max(1, n // 3)
     sample = pd.concat([g.sample(min(per, len(g)), random_state=RANDOM_STATE) for _, g in test.groupby(TARGET)])
 
-    records, tallies = [], {}
+    records, tallies, lat_llm, lat_tpl, spec_llm, spec_tpl = [], {}, [], [], [], []
     for _, r in sample.iterrows():
-        res = predict_hybrid(row_to_input(r))
+        res = predict_hybrid(row_to_input(r), explain=False)
+        mo = res["model_outputs"]
+        t0 = time.perf_counter()
+        llm = le.explain_decision({"complaint_text": r["Review Text"], "model_outputs": mo})
+        lat_llm.append(time.perf_counter() - t0)
+        t0 = time.perf_counter()
+        tpl = le.template_explanation(mo)
+        lat_tpl.append(time.perf_counter() - t0)
+        source = llm.pop("_source")
+        res = {**res, "llm_explanation": llm, "_meta": {"explanation_source": source}}
         c = check(res)
-        c["from_llm"] = res["_meta"]["explanation_source"] == "llm"
+        c["from_llm"] = source == "llm"
         for k, v in c.items():
             tallies.setdefault(k, []).append(v)
-        records.append({"true": r[TARGET], "text": r["Review Text"], **res, "checks": c})
+        tallies.setdefault("template_checks_pass", []).append(all(check({**res, "llm_explanation": tpl}).values()))
+        spec_llm.append(specificity(llm, r["Review Text"]))
+        spec_tpl.append(specificity(tpl, r["Review Text"]))
+        records.append({"true": r[TARGET], "text": r["Review Text"], "model_outputs": mo, "llm": llm, "template": tpl, "source": source, "checks": c})
 
     inj = []
     base = test.iloc[0]
     for atk in INJECTIONS:
-        clean = predict_hybrid(row_to_input(base))
         attacked = predict_hybrid(row_to_input(base, base["Review Text"] + " " + atk))
         # The deterministic decision may legitimately shift a little because the text changed;
         # the property under test is that the LLM output still equals ITS OWN policy action.
-        same_policy = attacked["llm_explanation"]["recommended_action"] == attacked["model_outputs"]["recommended_action"]
-        inj.append(same_policy)
+        inj.append(attacked["llm_explanation"]["recommended_action"] == attacked["model_outputs"]["recommended_action"])
     tallies["injection_resisted"] = inj
 
     summary = {k: round(sum(v) / len(v), 3) for k, v in tallies.items()}
     summary["n_samples"] = len(sample)
     summary["llm_share"] = summary.pop("from_llm")
+    summary["latency_seconds"] = {"llm_p50": pct(lat_llm, 50), "llm_p95": pct(lat_llm, 95), "template_p95": round(float(np.percentile(lat_tpl, 95)), 6)}
+    summary["specificity_overlap_with_complaint"] = {"llm_mean": round(float(np.mean(spec_llm)), 3), "template_mean": round(float(np.mean(spec_tpl)), 3)}
     print(json.dumps(summary, indent=2))
 
     if summary["llm_share"] == 0:
@@ -108,6 +140,33 @@ def main():
         json.dump(summary, f, indent=2)
     with open(RESULTS / "llm_eval_samples.json", "w") as f:
         json.dump(records, f, indent=2)
+    write_blind_sheet(records)
+
+
+def write_blind_sheet(records, k=18):
+    """A/B sheet for HUMAN grading: LLM and template explanations in random order, key kept separately."""
+    rng = random.Random(RANDOM_STATE)
+    picks = [r for r in records if r["source"] == "llm"]
+    rng.shuffle(picks)
+    picks = picks[:k]
+    lines = ["# Explanation review sheet (blind A/B)", "",
+             "For each case, read the complaint and the decision, then rate Explanation A and B from 1 (poor) to 5 (excellent) on",
+             "**faithful** (says nothing the complaint does not support), **useful** (would help a reviewer act) and **clear**, and mark",
+             "which you would rather see. The key to which is the LLM is in `explanation_review_key.json`: do not open it until you finish.", ""]
+    key = {}
+    for i, r in enumerate(picks, 1):
+        llm_first = rng.random() < 0.5
+        a, b = (r["llm"], r["template"]) if llm_first else (r["template"], r["llm"])
+        key[str(i)] = {"A": "llm" if llm_first else "template", "B": "template" if llm_first else "llm"}
+        fmt = lambda e: f"{e['summary']}  \n{e['reason']}  \nNotes: {'; '.join(map(str, e['risk_notes']))}"
+        mo = r["model_outputs"]
+        lines += [f"## Case {i}", f"**Complaint:** {r['text']}", "",
+                  f"**Decision:** {mo['risk_level']} / {mo['recommended_action']} (review reasons: {', '.join(mo['review_reasons']) or 'none'})", "",
+                  f"**Explanation A**  \n{fmt(a)}", "", f"**Explanation B**  \n{fmt(b)}", "",
+                  "Ratings (faithful / useful / clear), A: _ / _ / _   B: _ / _ / _   Preferred: A / B / tie", ""]
+    (RESULTS / "explanation_review_sheet.md").write_text("\n".join(lines))
+    with open(RESULTS / "explanation_review_key.json", "w") as f:
+        json.dump(key, f, indent=2)
 
 
 if __name__ == "__main__":

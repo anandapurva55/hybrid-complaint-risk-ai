@@ -12,3 +12,7 @@ results/llm_eval_samples.json
 
 # fp32 fine-tuned weights (~268 MB, over GitHub's file limit); the int8 copy in models/transformer_assets/ ships
 models/transformer_fp32/
+
+# build artifacts and the LSTM baseline weights (regenerate: python -m training.train_rnn_model)
+*.egg-info/
+models/rnn_model.keras

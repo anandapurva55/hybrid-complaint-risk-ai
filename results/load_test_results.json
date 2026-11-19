@@ -1,0 +1,29 @@
+{
+  "setup": "container limited to 2 CPUs / 4 GB on a laptop (Apple Silicon, arm64), LLM_PROVIDER=template, real test reviews",
+  "results": [
+    {
+      "concurrency": 1,
+      "requests": 300,
+      "throughput_rps": 3.4,
+      "latency_ms_p50": 273,
+      "latency_ms_p95": 464,
+      "latency_ms_max": 495
+    },
+    {
+      "concurrency": 4,
+      "requests": 300,
+      "throughput_rps": 3.37,
+      "latency_ms_p50": 1177,
+      "latency_ms_p95": 1611,
+      "latency_ms_max": 2056
+    },
+    {
+      "concurrency": 8,
+      "requests": 300,
+      "throughput_rps": 3.37,
+      "latency_ms_p50": 2325,
+      "latency_ms_p95": 2959,
+      "latency_ms_max": 3321
+    }
+  ]
+}

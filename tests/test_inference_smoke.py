@@ -50,3 +50,10 @@ def test_single_sample_and_batch_agree():
     both = hi.transformer_proba(["Terrible quality, it ripped on the first day.", "Lovely dress, fits well."])
     assert one.shape == (1, 3) and both.shape == (2, 3)
     assert abs(one[0] - both[0]).max() < 1e-3
+
+
+def test_cpu_limit_honours_override_and_is_positive(monkeypatch):
+    monkeypatch.setenv("TORCH_NUM_THREADS", "3")
+    assert hi.cpu_limit() == 3
+    monkeypatch.delenv("TORCH_NUM_THREADS")
+    assert hi.cpu_limit() >= 1

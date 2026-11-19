@@ -27,10 +27,10 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from hybrid_risk import hybrid_inference as hi
 from hybrid_risk.decision import apply_temperature, assess, blend, decide_levels, load_config
 from hybrid_risk.paths import DATA_PROCESSED, RESULTS
+from training.tune_decision import tune_thresholds
 from hybrid_risk.risk_common import (CATEGORICAL_FEATURES, CLASSES, FEATURE_COLUMNS, NUMERIC_FEATURES,
                          RANDOM_STATE, TARGET, TEXT_FEATURE, reorder_proba)
 
-MIN_WORDS = hi.MIN_WORDS
 
 
 def ece(proba, y_idx, bins=10):
@@ -69,6 +69,45 @@ def ablation_with_recommended_ind(train_df, test_df):
     return metrics(test_df[TARGET], pipe.predict(test_df[cols]))
 
 
+def _tuned_test_metrics(p_val, y_val, p_test, y_test):
+    th, tm, _, _ = tune_thresholds(p_val, y_val)
+    return metrics(y_test, decide_levels(p_test, th, tm)), (round(th, 3), round(tm, 3))
+
+
+def fair_comparison(cfg, test_df, y, p_cl, p_tx):
+    """Every system gets its own thresholds tuned on VALIDATION with the same rule, then is scored on test."""
+    val_df = pd.read_csv(DATA_PROCESSED / "val.csv")
+    yv = val_df[TARGET].to_numpy()
+    cl_v = apply_temperature(hi.classical_proba(val_df), cfg["temp_classical"])
+    tx_v = apply_temperature(hi.transformer_proba(val_df[TEXT_FEATURE].astype(str)), cfg["temp_text"])
+    cl_t, tx_t = apply_temperature(p_cl, cfg["temp_classical"]), apply_temperature(p_tx, cfg["temp_text"])
+    out = {}
+    for name, pv, pt in (("hybrid", blend(cl_v, tx_v, cfg["w_classical"]), blend(cl_t, tx_t, cfg["w_classical"])),
+                         ("transformer_alone", tx_v, tx_t), ("classical_alone", cl_v, cl_t)):
+        m, th = _tuned_test_metrics(pv, yv, pt, y)
+        out[name] = {"thresholds_t_high_t_medium": th, "macro_f1": m["macro_f1"],
+                     "high_recall": m["per_class"]["high"]["recall"], "high_precision": m["per_class"]["high"]["precision"]}
+    return out
+
+
+def age_ablation(cfg, train_df, test_df, y, p_tx):
+    """Classical model with Age added back (it is NOT a feature in the shipped system)."""
+    val_df = pd.read_csv(DATA_PROCESSED / "val.csv")
+    yv = val_df[TARGET].to_numpy()
+    num = ["Age"] + NUMERIC_FEATURES
+    pre = ColumnTransformer([
+        ("tfidf", TfidfVectorizer(max_features=5000, ngram_range=(1, 2), min_df=2), TEXT_FEATURE),
+        ("num", StandardScaler(), num), ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL_FEATURES)])
+    pipe = Pipeline([("pre", pre), ("clf", LogisticRegression(max_iter=2000, random_state=RANDOM_STATE))])
+    cols = [TEXT_FEATURE] + num + CATEGORICAL_FEATURES
+    pipe.fit(train_df[cols], train_df[TARGET])
+    prob = lambda df: apply_temperature(reorder_proba(pipe.predict_proba(df[cols]), pipe.classes_), cfg["temp_classical"])
+    tx_v = apply_temperature(hi.transformer_proba(val_df[TEXT_FEATURE].astype(str)), cfg["temp_text"])
+    tx_t = apply_temperature(p_tx, cfg["temp_text"])
+    m, th = _tuned_test_metrics(blend(prob(val_df), tx_v, cfg["w_classical"]), yv, blend(prob(test_df), tx_t, cfg["w_classical"]), y)
+    return {"hybrid_with_age_macro_f1": m["macro_f1"], "note": "compare with the shipped hybrid (no Age) under fair_comparison_each_retuned_on_validation"}
+
+
 def main():
     cfg = load_config()
     train_df = pd.read_csv(DATA_PROCESSED / "train.csv")
@@ -78,8 +117,7 @@ def main():
 
     p_cl = hi.classical_proba(test_df)
     p_rn = hi.transformer_proba(test_df[TEXT_FEATURE].astype(str))
-    short = test_df[TEXT_FEATURE].astype(str).str.split().str.len().to_numpy() < MIN_WORDS
-    res = assess(p_cl, p_rn, cfg, extra_flags={"short_text": short})
+    res = assess(p_cl, p_rn, cfg, extra_flags=hi.text_flags(test_df[TEXT_FEATURE], cfg))
     levels = res["level"]
 
     argmax = lambda p: np.array(CLASSES)[p.argmax(axis=1)]
@@ -109,6 +147,9 @@ def main():
         },
         "ablation_with_recommended_ind_classical_argmax": ablation_with_recommended_ind(train_df, test_df),
     }
+
+    out["fair_comparison_each_retuned_on_validation"] = fair_comparison(cfg, test_df, y, p_cl, p_rn)
+    out["age_ablation"] = age_ablation(cfg, train_df, test_df, y, p_rn)
 
     from training import baselines
     if baselines.rnn_available():
