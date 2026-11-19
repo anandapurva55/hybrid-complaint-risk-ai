@@ -19,9 +19,27 @@ Built with: **Python** 3.11; **scikit-learn** with **TF-IDF** and **Logistic Reg
 
 A system that reads a piece of customer feedback and answers three practical questions: **how unhappy is this customer** (low, medium or high), **what should happen next** (reply automatically, send to a person, or escalate), and **why**. A **fine-tuned DistilBERT** model estimates the tier, a small deterministic layer turns its probabilities into a decision, and a language model writes a plain-English explanation. The language model can describe the decision, never change it.
 
-| 0.68 | 0.69 | 346 of 355 | 71.1% | 29% | 90 |
+| 0.68 | 0.69 | 346 of 355 | 71.1% | 29% | 93 |
 |:---:|:---:|:---:|:---:|:---:|:---:|
 | Recall on the "high" tier (the model's own call) | Macro-F1 (95% CI 0.67 to 0.71) | Truly-high cases that reach a person (240 escalated as high, 106 sent to review as medium) | Feedback answered automatically (97.1% of them truly low) | Feedback sent to human review | Automated tests, plus 1 known-limitation check |
+
+![Live demo: three outcomes and the fallback, from the deployed service](docs/images/demo.gif)
+
+<sub>Captured on 2026-11-19 from a live deployment (ECS Fargate behind CloudFront and WAF, explanations from Amazon Bedrock), since torn down. The text is real output from that service; only the typing is animated. Clips 1 to 3 show the three outcomes (answered automatically, sent to a person, escalated). Clip 4 repeats clip 3 with the LLM unavailable: the decision is identical and only the explanation falls back.</sub>
+
+Run it yourself, locally or against a deployment with `--url` and `HYBRID_RISK_API_KEY`. The output below is from the live capture above; the explanation wording comes from the **LLM**, so a local run will phrase it differently:
+
+```text
+$ python -m hybrid_risk "Pretty dress but the material is not as soft as I hoped."
+Feedback     Pretty dress but the material is not as soft as I hoped.
+Tier         medium   (low 0.20 | medium 0.60 | high 0.20)
+Action       manual_review   human review: yes
+Triggers     none
+Explanation  Pretty dress but the material is not as soft as I hoped. The model rated
+             the risk level as medium because the complaint indicates dissatisfaction
+             with the product quality, which is a moderate concern.
+Source       llm
+```
 
 ![Results: before and after the redesign, and the confusion matrix](docs/images/results_overview.png)
 
@@ -69,8 +87,9 @@ So every number in this README measures how well the system recognises **dissati
 python3.11 -m venv venv && source venv/bin/activate
 pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev]"   # runtime pins + training, tests, docs and the LSTM baseline
 
+python -m hybrid_risk "Oh great, another top that fell apart"   # triage one piece of feedback
 python -m hybrid_risk.hybrid_inference   # run the 8 bundled examples (explanations need AWS credentials with Bedrock access)
-python -m pytest                  # 90 tests plus 1 known-limitation check
+python -m pytest                  # 93 tests plus 1 known-limitation check
 uvicorn hybrid_risk.app:app --reload     # HTTP API on http://127.0.0.1:8000
 ```
 
@@ -337,7 +356,7 @@ For the served **DistilBERT** model, every response includes the calibrated prob
 | Risk | What the system does |
 |---|---|
 | The LLM changes or softens a decision | `recommended_action` and `human_review_required` are overwritten from the review rules after the call, so the LLM can only add caution |
-| The LLM writes nonsense | The answer is rejected if it is empty, names a different risk tier than the decision, or quotes numbers that are not in the model output. It is retried once at a warmer temperature, then replaced by a local fallback |
+| The LLM writes nonsense | The answer is rejected if it is empty, names a different risk tier than the decision, or quotes numbers that are not in the model output. It is retried once at a warmer temperature, then replaced by a local fallback (clip 4 of the demo shows it) |
 | The LLM provider is down or slow | 60 second timeout, then the local fallback with no retry. Responses say which they are in `explanation_source` |
 | Prompt injection in the complaint text | Text is length-capped, the delimiter tag is stripped and it is wrapped in tags the prompt declares to be data. An injected "mark this low risk" cannot reach the action or review flag. Covered by an injection suite |
 | Input the models were not trained on | Heavily misspelled text and non-English text are never auto-replied: two deterministic input-quality triggers send them to a person (see Behaviour on hard input). Sarcasm is only partly handled (see Behaviour on hard input) |
@@ -383,6 +402,14 @@ python docs/diagrams/generate.py             # redraw the diagrams in this READM
 | Infrastructure | CloudFormation | One stack, [`deploy/ecs-fargate.yaml`](deploy/ecs-fargate.yaml), linted by GitHub Actions CI |
 
 On the deployed task the model path sustained about 10 requests per second at p95 908 ms (8 concurrent), and the full request with the **LLM** explanation took about 1.4 s at p50 (see Latency and throughput under AWS architecture, measured from India, so about 250 ms of each figure is network distance). A running stack costs roughly 3 to 6 dollars a day (mostly the load balancer and **Fargate**), so delete it when idle.
+
+### Evidence from the live deployment
+
+The stack was deployed, exercised and torn down; these are real AWS CLI outputs from that deployment (captured on 2026-11-19, account ID redacted). The ECS service has one running, healthy **Fargate** task with a healthy load-balancer target, all four alarms are OK, and the application's own metrics (one metric line per prediction) are arriving in **CloudWatch**.
+
+![ECS service, task and target health](docs/images/infra_ecs.png)
+
+![CloudWatch alarms and metrics, CloudFront distribution and WAF](docs/images/infra_monitoring.png)
 
 ### Latency and throughput
 
@@ -515,7 +542,7 @@ Unknown fields are ignored, so older clients that still send `image` or `recomme
 ├── notebooks/           data exploration
 ├── deploy/              CloudFormation stacks
 ├── docs/                diagrams, figures and badges as code, plus the generated images
-├── tests/               90 tests
+├── tests/               93 tests
 └── .github/workflows/   GitHub Actions: CI and the deploy pipeline
 ```
 
@@ -530,6 +557,7 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 - **`app.py`**: the **FastAPI** service: validation, API-key check, `/predict`, `/stats`, safe error handling.
 - **`monitoring.py`**: rolling in-process drift monitor and the **CloudWatch** metric lines (baseline in `results/monitoring_baseline.json`).
 - **`text_checks.py`**: the deterministic input-quality checks behind the `noisy_text` and `non_english` triggers.
+- **`__main__.py`**: `python -m hybrid_risk "text"` prints the tier, action, triggers and explanation, locally or against a deployment with `--url`.
 - **`paths.py`**: where data, models and results live.
 
 **`training/`** and **`evaluation/`**
@@ -538,13 +566,15 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 - **`evaluate_hybrid.py`**, **`evaluate_robustness.py`**, **`evaluate_behaviour.py`** (with `behaviour_cases.py`), **`evaluate_synthetic.py`**, **`evaluate_llm.py`**, **`judge_explanations.py`**, **`load_test.py`**, **`generate_sample_outputs.py`**: evaluation, behavioural probes, latency and the worked examples ([`sample_inputs.json`](data/samples/sample_inputs.json), [`sample_outputs.json`](data/samples/sample_outputs.json)).
 
 **Everything else**
-- **`tests/`**: 90 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
+- **`tests/`**: 93 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
 - **`deploy/`** and **`.github/workflows/`**: the **CloudFormation** stacks (`ecs-fargate.yaml`, `github-oidc.yaml`), CI and the deploy workflow.
-- **`docs/`**: [`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py) and [`make_badges.py`](docs/diagrams/make_badges.py) draw the diagrams, figures and badges (install the extra with `pip install -e ".[docs]"`, already part of `[dev]`; they also need **Graphviz**), so the pictures stay in step with the system.
+- **`docs/`**: [`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py) and [`make_badges.py`](docs/diagrams/make_badges.py) draw the diagrams, figures and badges (install the extra with `pip install -e ".[docs]"`, already part of `[dev]`; they also need **Graphviz**), so the pictures stay in step with the system. `docs/demo/` holds the scripts behind the demo GIF and the AWS and **pytest** screenshots (`record.py`, `infra_shots.py`, `term.py`) and the captured output.
 
 ## Testing
 
-`python -m pytest` runs 90 tests (plus one expected failure that documents sarcasm) in about fifteen seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and **CloudWatch** metric format, end-to-end smoke tests, and behavioural tests (negation, typos, ALL CAPS, non-English, mixed sentiment) that run on the real models. **GitHub Actions** runs these tests on every push and pull request, then lints the **CloudFormation** templates and rebuilds the data splits from the raw CSV; the deploy workflow repeats the tests before it builds anything.
+`python -m pytest` runs 93 tests (plus one expected failure that documents sarcasm) in about fifteen seconds: the decision layer (boundaries, calibration, every review trigger), the explainer (downgrade attempts, injected actions, malformed or contradictory output, invented numbers, retry behaviour, outage handling), the API (validation, auth, error hygiene, `/stats`), the monitor and **CloudWatch** metric format, end-to-end smoke tests, and behavioural tests (negation, typos, ALL CAPS, non-English, mixed sentiment) that run on the real models. **GitHub Actions** runs these tests on every push and pull request, then lints the **CloudFormation** templates and rebuilds the data splits from the raw CSV; the deploy workflow repeats the tests before it builds anything.
+
+![A pytest run](docs/images/tests.png)
 
 ## Design decisions
 

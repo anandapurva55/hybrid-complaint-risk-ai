@@ -1,0 +1,62 @@
+{
+  "captured": "2026-11-19",
+  "rows": [
+    {
+      "comment": "# 1. clearly positive: answered automatically",
+      "command": "python -m hybrid_risk --url https://d3hamfa3d6wbtj.cloudfront.net \"Love this sweater, perfect fit and gorgeous color.\"",
+      "output": [
+        "Feedback     Love this sweater, perfect fit and gorgeous color.",
+        "Tier         low   (low 0.99 | medium 0.01 | high 0.00)",
+        "Action       auto_reply   human review: no",
+        "Triggers     none",
+        "Explanation  Love this sweater, perfect fit and gorgeous color. The model rated the risk",
+        "             level as low because the probabilities for low risk were 99.1%, indicating",
+        "             a very low chance of any issues.",
+        "Source       llm"
+      ]
+    },
+    {
+      "comment": "# 2. mixed: a person should look",
+      "command": "python -m hybrid_risk --url https://d3hamfa3d6wbtj.cloudfront.net \"Pretty dress but the material is not as soft as I hoped.\"",
+      "output": [
+        "Feedback     Pretty dress but the material is not as soft as I hoped.",
+        "Tier         medium   (low 0.20 | medium 0.60 | high 0.20)",
+        "Action       manual_review   human review: yes",
+        "Triggers     none",
+        "Explanation  Pretty dress but the material is not as soft as I hoped. The model rated",
+        "             the risk level as medium because the complaint indicates dissatisfaction",
+        "             with the product quality, which is a moderate concern.",
+        "Source       llm"
+      ]
+    },
+    {
+      "comment": "# 3. angry: escalate",
+      "command": "python -m hybrid_risk --url https://d3hamfa3d6wbtj.cloudfront.net \"Fell apart in the wash. Worst purchase ever, I want a refund!\"",
+      "output": [
+        "Feedback     Fell apart in the wash. Worst purchase ever, I want a refund!",
+        "Tier         high   (low 0.01 | medium 0.03 | high 0.96)",
+        "Action       escalate_immediately   human review: yes",
+        "Triggers     none",
+        "Explanation  Fell apart in the wash. Worst purchase ever, I want a refund! The model",
+        "             rated the risk level as high due to the high probability of 0.958,",
+        "             indicating a strong likelihood of a significant issue with the product.",
+        "Source       llm"
+      ]
+    },
+    {
+      "comment": "# 4. same request with the LLM unavailable: same decision, local fallback explanation",
+      "command": "python -m hybrid_risk --url https://d3hamfa3d6wbtj.cloudfront.net \"Fell apart in the wash. Worst purchase ever, I want a refund!\"",
+      "output": [
+        "Feedback     Fell apart in the wash. Worst purchase ever, I want a refund!",
+        "Tier         high   (low 0.01 | medium 0.03 | high 0.96)",
+        "Action       escalate_immediately   human review: yes",
+        "Triggers     none",
+        "Explanation  Automated explanation unavailable. The models assessed this feedback as",
+        "             high risk (final_score=0.973). Fallback explanation generated locally; see",
+        "             model_outputs for the underlying probabilities. LLM issue: LLM disabled",
+        "             (LLM_PROVIDER=none)",
+        "Source       fallback"
+      ]
+    }
+  ]
+}
