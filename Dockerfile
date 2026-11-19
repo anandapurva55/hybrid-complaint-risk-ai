@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Install dependencies first so this layer is cached across code-only changes.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
 # Copy only what inference needs: the hybrid_risk package, the DistilBERT artifacts, the tuned decision
 # config and the monitoring baseline. Training and evaluation code, data, notebooks and the LSTM baseline are left out.

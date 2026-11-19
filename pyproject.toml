@@ -4,10 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hybrid-risk"
-version = "3.0.0"
-description = "Hybrid customer-dissatisfaction risk triage: classical ML + fine-tuned DistilBERT, a calibrated decision layer and LLM explanations"
+version = "4.0.0"
+description = "Customer-dissatisfaction risk triage: a fine-tuned DistilBERT, a calibrated decision layer with deterministic review rules, and LLM explanations"
 requires-python = ">=3.11"
-# Runtime dependencies are pinned in requirements.txt; install them first.
+dynamic = ["dependencies"]            # the pinned runtime dependencies live in requirements.txt
+
+[project.optional-dependencies]
+train = ["scikit-learn==1.9.1", "pandas==3.1.1", "joblib==1.6.0"]        # data split, training, evaluation, baselines
+baselines = ["tensorflow==2.21.0", "keras==3.15.1"]                      # the LSTM baseline only
+test = ["hybrid-risk[train]", "pytest==9.2.0", "httpx==0.28.1", "cfn-lint"]
+docs = ["diagrams", "pillow", "matplotlib==3.11.2"]                      # diagrams, figures and badges (also needs Graphviz)
+dev = ["hybrid-risk[test,baselines,docs]", "jupyter"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools.packages.find]
 where = ["src"]

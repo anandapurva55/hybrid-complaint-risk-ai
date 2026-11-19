@@ -19,9 +19,9 @@ Built with: **Python** 3.11; **scikit-learn** with **TF-IDF** and **Logistic Reg
 
 A system that reads a piece of customer feedback and answers three practical questions: **how unhappy is this customer** (low, medium or high), **what should happen next** (reply automatically, send to a person, or escalate), and **why**. A **fine-tuned DistilBERT** model estimates the tier, a small deterministic layer turns its probabilities into a decision, and a language model writes a plain-English explanation. The language model can describe the decision, never change it.
 
-| **0.68** | **0.69** | **346 of 355** | **71.1%** | **29%** | **90** |
+| 0.68 | 0.69 | 346 of 355 | 71.1% | 29% | 90 |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| Recall on the "high" tier (the model's own call) | **Macro-F1** (95% CI 0.67 to 0.71) | Truly-high cases that reach a person (240 escalated as high, 106 sent to review as medium) | Feedback answered automatically (97.1% of them truly low) | Feedback sent to human review | Automated tests, plus 1 known-limitation check |
+| Recall on the "high" tier (the model's own call) | Macro-F1 (95% CI 0.67 to 0.71) | Truly-high cases that reach a person (240 escalated as high, 106 sent to review as medium) | Feedback answered automatically (97.1% of them truly low) | Feedback sent to human review | Automated tests, plus 1 known-limitation check |
 
 ![Results: before and after the redesign, and the confusion matrix](docs/images/results_overview.png)
 
@@ -33,16 +33,17 @@ A system that reads a piece of customer feedback and answers three practical que
 2. [Quickstart](#quickstart)
 3. [How it works](#how-it-works)
 4. [Results](#results)
-5. [Explainability](#explainability)
-6. [Safety and guardrails](#safety-and-guardrails)
-7. [Training pipeline](#training-pipeline)
-8. [AWS architecture](#aws-architecture)
-9. [API](#api)
-10. [Configuration](#configuration)
-11. [File by file](#file-by-file)
-12. [Testing](#testing)
-13. [Design decisions](#design-decisions)
-14. [Limitations and next steps](#limitations-and-next-steps)
+5. [Behaviour on hard input](#behaviour-on-hard-input)
+6. [Explainability](#explainability)
+7. [Safety and guardrails](#safety-and-guardrails)
+8. [Training pipeline](#training-pipeline)
+9. [AWS architecture](#aws-architecture)
+10. [API](#api)
+11. [Configuration](#configuration)
+12. [File by file](#file-by-file)
+13. [Testing](#testing)
+14. [Design decisions](#design-decisions)
+15. [Limitations and next steps](#limitations-and-next-steps)
 
 ## About the data and the label
 
@@ -60,14 +61,13 @@ So every number in this README measures how well the system recognises **dissati
 
 **Data licence.** The raw CSV is included unmodified so the pipeline reproduces from a fresh clone. It is a public Kaggle dataset (the notebook links the source); a third-party catalogue lists it as CC0 public domain, but that was not confirmed on the Kaggle page itself, so check the licence there before redistributing it.
 
-**Synthetic data.** The real reviews contain almost no sarcasm, so `data/synthetic/` holds LLM-written sarcastic and negated reviews, used for extra training data and as a held-out stress test (written by a different model family than the training data). It is synthetic, imperfect and never mixed into the real validation or test splits; the details are under Results.
+**Synthetic data.** The real reviews contain almost no sarcasm, so `data/synthetic/` holds LLM-written sarcastic and negated reviews, used for extra training data and as a held-out stress test (written by a different model family than the training data). It is synthetic, imperfect and never mixed into the real validation or test splits; the details are under Behaviour on hard input.
 
 ## Quickstart
 
 ```bash
 python3.11 -m venv venv && source venv/bin/activate
-pip install -r requirements-dev.txt
-pip install -e .                  # makes the hybrid_risk package importable
+pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev]"   # runtime pins + training, tests, docs and the LSTM baseline
 
 python -m hybrid_risk.hybrid_inference   # run the 8 bundled examples (explanations need AWS credentials with Bedrock access)
 python -m pytest                  # 90 tests plus 1 known-limitation check
@@ -185,92 +185,33 @@ Evaluated on the held-out test split (3,397 reviews, stratified 70/15/15 with a 
 - **What the model does on its own:** it catches 0.68 of the truly unhappy reviews (high tier) at 0.64 **precision**, with **macro-F1** 0.69 (95% CI 0.67 to 0.71). The **346 of 355** in the headline row is a policy number: 240 of those are predicted high, and 106 are predicted medium and sent to a person because medium always is.
 - **Why there is no classical model any more:** a **TF-IDF** + **Logistic Regression** model used to be blended in at 10%. With each system given its own validation-tuned **thresholds**, blending it back in scores **macro-F1** 0.696 against 0.689, and the 95% interval for that difference (-0.000 to +0.015) includes zero, so the data does not justify the extra model, its tabular inputs and a heavier serving image. It stays as a baseline (**macro-F1** 0.59 on its own) and for the top-words chart. **DistilBERT** alone scores 0.69 at plain argmax, against 0.59 for the classical baseline and 0.55 for the **LSTM**.
 
-### Behavioural checks
-
-Accuracy on a test set says little about input the data barely contains, so [`evaluate_behaviour.py`](evaluation/evaluate_behaviour.py) probes the full decision with small CheckList-style cases ([`behaviour_cases.py`](evaluation/behaviour_cases.py)). "Caught" means the feedback is **not** auto-replied. These are templated probes, so read them as failure-mode checks, not population rates.
-
-| Case | n | Caught by the model's tier alone | With the review rules |
-|---|---|---|---|
-| Clearly negative, clean text | 12 | 100% | **100%** |
-| Negative with mild typos | 36 | 100% | **100%** |
-| Negative with heavy typos | 36 | 94% | **100%** |
-| Negative in ALL CAPS | 12 | 100% | **100%** |
-| Negative in Spanish, French, German, Italian, Portuguese | 5 | 60% | **100%** |
-| Mixed sentiment (praise plus a real problem) | 6 | 100% | **100%** |
-| Sarcastic complaints (hand-written probes) | 5 | 80% | **80%** |
-| Clearly positive, clean text | 10 | n/a | **100%** auto-replied |
-| Positive in ALL CAPS | 10 | n/a | **100%** auto-replied |
-| Positive with mild typos (the cost of the noisy-text trigger) | 30 | n/a | **67%** auto-replied |
-
-- **Negation** points the right way in 100% of 9 pairs, and **ALL CAPS** keeps the same tier in 100% of 22 cases.
-- **Typos and non-English text** are where the **review rules** earn their place: two input-quality triggers (word-piece fragmentation, and almost no common English words) are calibrated on real reviews, where they fire for under 0.1% of cases. They send heavily misspelled and non-English text to a person, at the cost of reviewing about a third of mildly misspelled *positive* reviews unnecessarily.
-
-### Sarcasm and negation
-
-The first version failed on sarcasm: both text models read "Oh great, another top that fell apart" as positive. To measure and then reduce that without tuning against my own handful of probes, [`generate_synthetic.py`](training/generate_synthetic.py) had LLMs write sarcastic complaints and negated reviews ([`data/synthetic/`](data/synthetic/)). Training and dev data come from **Claude** models; the held-out **test** comes from a different family (**Amazon Nova Pro**), is never used for training, tuning or threshold selection, and the real validation and test reviews are untouched. Share the system gets right (complaints: not auto-replied; satisfied reviews: not escalated):
-
-| Held-out test case (written by Nova Pro) | n | Before training on the synthetic data | After |
-|---|---|---|---|
-| Sarcastic complaints (unhappy, positive wording) | 90 | 37% | **70%** |
-| Unhappy, expressed with negation ("not worth it") | 45 | 100% | **100%** |
-| Satisfied, expressed with negation ("can't complain") | 45 | 98% | **100%** |
-
-Sarcasm is **improved, not solved**: 30% of the sarcastic complaints are still auto-replied. The set is LLM-written and imperfect (some "sarcastic" examples are really literal complaints), the gain is measured on a different **LLM**'s idea of sarcasm rather than on real customers, and the real test set did not regress (**macro-F1** 0.689).
-
-### Latency and load
-
-[`load_test.py`](evaluation/load_test.py) against the container limited to 2 CPUs and 4 GB (the **Fargate** task size) on a laptop (Apple Silicon), real test reviews, model path only (`LLM_PROVIDER=template`):
-
-| Concurrent requests | Throughput | Latency p50 | Latency p95 |
-|---|---|---|---|
-| 1 | 3.4 req/s | 273 ms | 464 ms |
-| 4 | 3.37 req/s | 1177 ms | 1611 ms |
-| 8 | 3.37 req/s | 2325 ms | 2959 ms |
-
-On the **deployed** service (one ECS **Fargate** task with 2 vCPU and 4 GB on x86, through **CloudFront**, measured from a laptop in India, `LLM_PROVIDER=template`). About 250 ms of the single-request latency is network distance to us-east-1, not the model:
-
-| Concurrent requests | Throughput | Latency p50 | Latency p95 |
-|---|---|---|---|
-| 1 | 2.8 req/s | 345 ms | 427 ms |
-| 4 | 9.98 req/s | 386 ms | 488 ms |
-| 8 | 10.31 req/s | 755 ms | 908 ms |
-
-Full path with the **LLM** explanation on (**Amazon Bedrock** **Nova Lite**), same task and route:
-
-| Concurrent requests | Throughput | Latency p50 | Latency p95 |
-|---|---|---|---|
-| 1 | 0.65 req/s | 1426 ms | 2292 ms |
-| 4 | 2.45 req/s | 1491 ms | 2515 ms |
-
-**PyTorch**'s thread count is taken from the container's CPU limit and inference is serialised, which raised laptop throughput from about 2.2 to 3.4 req/s and cut p95 at 8 concurrent requests from 5.0 s to 3.0 s. The **LLM** call adds about 1.31 s (p50) per request when explanations are on. These figures come from a short, billed deployment that was torn down afterwards; the stack's three-task ceiling would roughly triple the model-path throughput, which is not measured.
-
 <details>
 <summary><b>Full evaluation tables</b>: components, baselines, uncertainty, ablations, calibration, triage, subgroups, explanation layer</summary>
 
 **Components at plain argmax (no tuning)**
 
-| Model | Accuracy | **Macro-F1** | High **precision** | High **recall** | **AUC** (high vs rest) |
+| Model | Accuracy | Macro-F1 | High precision | High recall | AUC (high vs rest) |
 |---|---|---|---|---|---|
 | Always "low" | 0.771 | 0.290 | 0 | 0 | n/a |
-| **LSTM** baseline | 0.820 | 0.547 | 0.493 | 0.597 | 0.920 |
-| Classical baseline (**TF-IDF** + **Logistic Regression**) | 0.828 | 0.589 | 0.636 | 0.448 | 0.933 |
-| **DistilBERT** (the served model) | 0.856 | 0.688 | 0.634 | 0.687 | 0.955 |
+| LSTM baseline | 0.820 | 0.547 | 0.493 | 0.597 | 0.920 |
+| Classical baseline (TF-IDF + Logistic Regression) | 0.828 | 0.589 | 0.636 | 0.448 | 0.933 |
+| DistilBERT (the served model) | 0.856 | 0.688 | 0.634 | 0.687 | 0.955 |
 
 **Each system with its own thresholds, tuned on validation by the same rule**
 
-| System | Thresholds (high, medium) | **Macro-F1** | High **precision** | High **recall** |
+| System | Thresholds (high, medium) | Macro-F1 | High precision | High recall |
 |---|---|---|---|---|
-| **Served system** (**DistilBERT** alone) | 0.45, 0.25 | 0.689 | 0.638 | 0.676 |
-| **DistilBERT** + classical blended back in (10%) | 0.425, 0.275 | 0.696 | 0.639 | 0.704 |
+| Served system (DistilBERT alone) | 0.45, 0.25 | 0.689 | 0.638 | 0.676 |
+| DistilBERT + classical blended back in (10%) | 0.425, 0.275 | 0.696 | 0.639 | 0.704 |
 | Classical baseline alone | 0.225, 0.25 | 0.618 | 0.500 | 0.721 |
 
 Per-class (served system): low P 0.970 / R 0.898; medium P 0.408 / R 0.576 (F1 0.477); high P 0.638 / R 0.676 (F1 0.657). Accuracy 0.835; **AUC** (high vs rest) 0.955.
 
 | True \ predicted | low | medium | high |
 |---|---|---|---|
-| **low** | 2351 | 248 | 19 |
-| **medium** | 63 | 244 | 117 |
-| **high** | 9 | 106 | 240 |
+| low | 2351 | 248 | 19 |
+| medium | 63 | 244 | 117 |
+| high | 9 | 106 | 240 |
 
 **Uncertainty (1,000 bootstrap resamples of the test set, 95% CI):** served system **macro-F1** 0.667 to 0.710; high **recall** 0.626 to 0.723; high **precision** 0.590 to 0.688. Blending the **classical model** back in changes **macro-F1** by -0.000 to +0.015, an interval that includes zero.
 
@@ -279,11 +220,11 @@ Three **fine-tuning** runs with different seeds ([`seed_runs/`](results/seed_run
 
 **History of the redesign (same test split)**
 
-| | v1 (**CNN** fixed at 0.4, 0.45/0.75 **thresholds**) | v2 (probabilities, classical + **LSTM**) | v3 (classical + **DistilBERT** blend) | v4 (current: **DistilBERT** alone + sarcasm data) |
+| | v1 (CNN fixed at 0.4, 0.45/0.75 thresholds) | v2 (probabilities, classical + LSTM) | v3 (classical + DistilBERT blend) | v4 (current: DistilBERT alone + sarcasm data) |
 |---|---|---|---|---|
 | Recall on high | 0.132 | 0.730 | 0.710 | 0.676 |
 | Precision on high | 0.681 | 0.498 | 0.583 | 0.638 |
-| **Macro-F1** | 0.543 | 0.622 | 0.671 | 0.689 |
+| Macro-F1 | 0.543 | 0.622 | 0.671 | 0.689 |
 | Medium F1 | n/a | 0.353 | 0.439 | 0.477 |
 | Truly-high cases auto-replied | 29 | 16 | 5 | 9 |
 | Cases forced to human review | 80.7% | 29.7% | 29.8% | 28.9% |
@@ -299,7 +240,7 @@ v1 was measured by running the original models on this split. The constant **CNN
 
 | | raw | after temperature scaling (fit on validation) |
 |---|---|---|
-| **DistilBERT** | 0.027 | 0.008 |
+| DistilBERT | 0.027 | 0.008 |
 | Classical baseline | 0.035 | n/a |
 
 **Triage behaviour (test set)**
@@ -317,7 +258,7 @@ v1 was measured by running the original models on this split. The constant **CNN
 
 **Subgroups (served system, test set)**
 
-| Group | n | **Macro-F1** | High **recall** (n true high) | Truly-high auto-replied |
+| Group | n | Macro-F1 | High recall (n true high) | Truly-high auto-replied |
 |---|---|---|---|---|
 | Age <30 | 441 | 0.700 | 0.73 (52) | 1.9% |
 | Age 30-45 | 1624 | 0.680 | 0.66 (161) | 3.1% |
@@ -333,19 +274,55 @@ Performance is fairly even across age bands (age is audited here but is not a mo
 
 **Explanation layer: LLM vs templated baseline** ([`evaluate_llm.py`](evaluation/evaluate_llm.py), 45 stratified test rows plus 3 injection strings, **Amazon Bedrock** **Nova Lite**)
 
-| Check | **LLM** | Templated baseline |
+| Check | LLM | Templated baseline |
 |---|---|---|
 | Schema valid, action equals policy, review never downgraded, consistent with the decided tier, quoted numbers match | 100% | 100% |
 | Injection suite: action unchanged | 3 / 3 | n/a |
-| Responses that came from the **LLM** (rest rejected twice, then fallback) | 98% | n/a |
+| Responses that came from the LLM (rest rejected twice, then fallback) | 98% | n/a |
 | Latency, p50 / p95 | 1.31 s / 2.23 s | under 1 ms |
 | Specificity: share of the explanation's content words that come from the complaint | 0.23 | 0.01 |
-| **LLM-judge proxy** (Claude Sonnet, scores 1 to 5): faithful / useful / clear | 3.98 / 3.47 / 3.75 | 3.56 / 2.74 / 3.45 |
+| LLM-judge proxy (Claude Sonnet, scores 1 to 5): faithful / useful / clear | 3.98 / 3.47 / 3.75 | 3.56 / 2.74 / 3.45 |
 | LLM-judge proxy: which explanation it would show a reviewer | 70% | 23% (tie 7%) |
 
 The pass rates hold by construction (the validators reject bad output first), and the templated baseline passes every automatic check too, so those checks cannot tell the two apart. Two further signals: the **LLM** adds complaint-specific wording (overlap 0.23 against 0.01), and a Claude judge, scoring each pair twice with the order swapped, prefers the **LLM** explanation (70% against 23%) and scores it higher on usefulness; on faithfulness the two were roughly level (the **LLM** scored a little lower in an earlier run and higher in this one). That judge is a **proxy, not human evidence**: it agreed with itself across the two orders only 82% of the time. [`results/explanation_review_sheet.md`](results/explanation_review_sheet.md) is a blind A/B sheet for human grading (key kept separately); until someone grades it, usefulness is not established. One sampled **LLM** explanation added a "safety or compliance concerns" remark that the complaint does not support, which no automatic check catches. Early development with a small 3B-parameter model produced `reason: "Low risk"` on a high-risk case, empty fields and invented figures such as "863% probability", which is why the validators exist.
 
 </details>
+
+## Behaviour on hard input
+
+The test set says little about input the training data barely contains, so these checks probe it directly: templated cases for typos, capitalisation, other languages, negation and mixed sentiment, and a larger held-out set for sarcasm.
+
+### Typos, ALL CAPS, non-English and mixed sentiment
+
+[`evaluate_behaviour.py`](evaluation/evaluate_behaviour.py) probes the full decision with small CheckList-style cases ([`behaviour_cases.py`](evaluation/behaviour_cases.py)). "Caught" means the feedback is **not** auto-replied. These are templated probes, so read them as failure-mode checks, not population rates.
+
+| Case | n | Caught by the model's tier alone | With the review rules |
+|---|---|---|---|
+| Clearly negative, clean text | 12 | 100% | 100% |
+| Negative with mild typos | 36 | 100% | 100% |
+| Negative with heavy typos | 36 | 94% | 100% |
+| Negative in ALL CAPS | 12 | 100% | 100% |
+| Negative in Spanish, French, German, Italian, Portuguese | 5 | 60% | 100% |
+| Mixed sentiment (praise plus a real problem) | 6 | 100% | 100% |
+| Sarcastic complaints (hand-written probes) | 5 | 80% | 80% |
+| Clearly positive, clean text | 10 | n/a | 100% auto-replied |
+| Positive in ALL CAPS | 10 | n/a | 100% auto-replied |
+| Positive with mild typos (the cost of the noisy-text trigger) | 30 | n/a | 67% auto-replied |
+
+- **Negation** points the right way in 100% of 9 pairs, and **ALL CAPS** keeps the same tier in 100% of 22 cases.
+- **Typos and non-English text** are where the **review rules** earn their place: two input-quality triggers (word-piece fragmentation, and almost no common English words) are calibrated on real reviews, where they fire for under 0.1% of cases. They send heavily misspelled and non-English text to a person, at the cost of reviewing about a third of mildly misspelled *positive* reviews unnecessarily.
+
+### Sarcasm and negation
+
+The first version failed on sarcasm: both text models read "Oh great, another top that fell apart" as positive. To measure and then reduce that without tuning against my own handful of probes, [`generate_synthetic.py`](training/generate_synthetic.py) had LLMs write sarcastic complaints and negated reviews ([`data/synthetic/`](data/synthetic/)). Training and dev data come from **Claude** models; the held-out **test** comes from a different family (**Amazon Nova Pro**), is never used for training, tuning or threshold selection, and the real validation and test reviews are untouched. Share the system gets right (complaints: not auto-replied; satisfied reviews: not escalated):
+
+| Held-out test case (written by Nova Pro) | n | Before training on the synthetic data | After |
+|---|---|---|---|
+| Sarcastic complaints (unhappy, positive wording) | 90 | 37% | 70% |
+| Unhappy, expressed with negation ("not worth it") | 45 | 100% | 100% |
+| Satisfied, expressed with negation ("can't complain") | 45 | 98% | 100% |
+
+Sarcasm is **improved, not solved**: 30% of the sarcastic complaints are still auto-replied. The set is LLM-written and imperfect (some "sarcastic" examples are really literal complaints), the gain is measured on a different **LLM**'s idea of sarcasm rather than on real customers, and the real test set did not regress (**macro-F1** 0.689).
 
 ## Explainability
 
@@ -359,15 +336,15 @@ For the served **DistilBERT** model, every response includes the calibrated prob
 
 | Risk | What the system does |
 |---|---|
-| The **LLM** changes or softens a decision | `recommended_action` and `human_review_required` are overwritten from the review rules after the call, so the **LLM** can only add caution |
-| The **LLM** writes nonsense | The answer is rejected if it is empty, names a different risk tier than the decision, or quotes numbers that are not in the model output. It is retried once at a warmer temperature, then replaced by a local fallback |
-| The **LLM** provider is down or slow | 60 second timeout, then the local fallback with no retry. Responses say which they are in `explanation_source` |
+| The LLM changes or softens a decision | `recommended_action` and `human_review_required` are overwritten from the review rules after the call, so the LLM can only add caution |
+| The LLM writes nonsense | The answer is rejected if it is empty, names a different risk tier than the decision, or quotes numbers that are not in the model output. It is retried once at a warmer temperature, then replaced by a local fallback |
+| The LLM provider is down or slow | 60 second timeout, then the local fallback with no retry. Responses say which they are in `explanation_source` |
 | Prompt injection in the complaint text | Text is length-capped, the delimiter tag is stripped and it is wrapped in tags the prompt declares to be data. An injected "mark this low risk" cannot reach the action or review flag. Covered by an injection suite |
-| Input the models were not trained on | Heavily misspelled text and non-English text are never auto-replied: two deterministic input-quality triggers send them to a person (see the behavioural checks under Results). Sarcasm is only partly handled (see Sarcasm and negation under Results) |
+| Input the models were not trained on | Heavily misspelled text and non-English text are never auto-replied: two deterministic input-quality triggers send them to a person (see Behaviour on hard input). Sarcasm is only partly handled (see Behaviour on hard input) |
 | Abuse of the endpoint | Layered controls at the edge and load balancer (see [AWS architecture](#aws-architecture)), an API key checked in constant time, input validation with length and range limits, and generic error messages that never expose internals |
 | An unexpected failure | A missing model artifact gives a generic 503 and anything else a generic 500, with details kept in logs. An unhealthy task is dropped by the load balancer, replaced by ECS and raises an alarm |
-| Secrets | The API key is generated by **Secrets Manager** at deploy time, the task role can invoke exactly one **Bedrock** model and no keys are stored in the repository or in GitHub (deploys use **OIDC**) |
-| Privacy | Metrics and logs contain no complaint text or customer identifiers. Complaint text is sent only to **Bedrock** for the explanation (set `LLM_PROVIDER=none` to keep everything in-process) |
+| Secrets | The API key is generated by Secrets Manager at deploy time, the task role can invoke exactly one Bedrock model and no keys are stored in the repository or in GitHub (deploys use OIDC) |
+| Privacy | Metrics and logs contain no complaint text or customer identifiers. Complaint text is sent only to Bedrock for the explanation (set `LLM_PROVIDER=none` to keep everything in-process) |
 
 ## Training pipeline
 
@@ -398,14 +375,41 @@ python docs/diagrams/generate.py             # redraw the diagrams in this READM
 
 | Layer | Service | Role |
 |---|---|---|
-| Edge | **CloudFront**, **AWS WAF** | **HTTPS** with the default certificate, HTTP redirected, and a rate limit of 300 requests per 5 minutes per IP |
-| Serving | **Application Load Balancer**, **ECS on Fargate** | The load balancer only accepts **CloudFront**'s address range. Tasks have 2 vCPU and 4 GB and autoscale from 1 to 3 on CPU at 60%. The image is about 464 MB compressed in ECR (mostly CPU-only **PyTorch**; no TensorFlow, **scikit-learn** or pandas) |
-| Explanations | **Amazon Bedrock** (**Nova Lite**) | Called through a task role allowed to invoke only that model |
-| Secrets | **AWS Secrets Manager** | Generates the API key at deploy time and injects it into the container |
-| Observability | **CloudWatch** | One **EMF** metric line per prediction (`Predictions`, `ReviewRequired`, `FallbackExplanation`, `AutoReply`, `EscalatedHigh`, `TopProbability`) and four alarms: 5xx errors, unhealthy task, fallback share above 40%, review share above 50%. `GET /stats` compares one task with the test-split baseline in [`monitoring_baseline.json`](results/monitoring_baseline.json) |
-| Infrastructure | **CloudFormation** | One stack, [`deploy/ecs-fargate.yaml`](deploy/ecs-fargate.yaml), linted by **GitHub Actions** CI |
+| Edge | CloudFront, AWS WAF | HTTPS with the default certificate, HTTP redirected, and a rate limit of 300 requests per 5 minutes per IP |
+| Serving | Application Load Balancer, ECS on Fargate | The load balancer only accepts CloudFront's address range. Tasks have 2 vCPU and 4 GB and autoscale from 1 to 3 on CPU at 60%. The image is about 464 MB compressed in ECR (mostly CPU-only PyTorch; no TensorFlow, scikit-learn or pandas) |
+| Explanations | Amazon Bedrock (Nova Lite) | Called through a task role allowed to invoke only that model |
+| Secrets | AWS Secrets Manager | Generates the API key at deploy time and injects it into the container |
+| Observability | CloudWatch | One EMF metric line per prediction (`Predictions`, `ReviewRequired`, `FallbackExplanation`, `AutoReply`, `EscalatedHigh`, `TopProbability`) and four alarms: 5xx errors, unhealthy task, fallback share above 40%, review share above 50%. `GET /stats` compares one task with the test-split baseline in [`monitoring_baseline.json`](results/monitoring_baseline.json) |
+| Infrastructure | CloudFormation | One stack, [`deploy/ecs-fargate.yaml`](deploy/ecs-fargate.yaml), linted by GitHub Actions CI |
 
-On the deployed task the model path sustained about 10 requests per second at p95 908 ms (8 concurrent), and the full request with the **LLM** explanation took about 1.4 s at p50 (see Latency and load under Results, measured from India, so about 250 ms of each figure is network distance). A running stack costs roughly 3 to 6 dollars a day (mostly the load balancer and **Fargate**), so delete it when idle.
+On the deployed task the model path sustained about 10 requests per second at p95 908 ms (8 concurrent), and the full request with the **LLM** explanation took about 1.4 s at p50 (see Latency and throughput under AWS architecture, measured from India, so about 250 ms of each figure is network distance). A running stack costs roughly 3 to 6 dollars a day (mostly the load balancer and **Fargate**), so delete it when idle.
+
+### Latency and throughput
+
+[`load_test.py`](evaluation/load_test.py) against the container limited to 2 CPUs and 4 GB (the **Fargate** task size) on a laptop (Apple Silicon), real test reviews, model path only (`LLM_PROVIDER=template`):
+
+| Concurrent requests | Throughput | Latency p50 | Latency p95 |
+|---|---|---|---|
+| 1 | 3.4 req/s | 273 ms | 464 ms |
+| 4 | 3.37 req/s | 1177 ms | 1611 ms |
+| 8 | 3.37 req/s | 2325 ms | 2959 ms |
+
+On the **deployed** service (one ECS **Fargate** task with 2 vCPU and 4 GB on x86, through **CloudFront**, measured from a laptop in India, `LLM_PROVIDER=template`). About 250 ms of the single-request latency is network distance to us-east-1, not the model:
+
+| Concurrent requests | Throughput | Latency p50 | Latency p95 |
+|---|---|---|---|
+| 1 | 2.8 req/s | 345 ms | 427 ms |
+| 4 | 9.98 req/s | 386 ms | 488 ms |
+| 8 | 10.31 req/s | 755 ms | 908 ms |
+
+Full path with the **LLM** explanation on (**Amazon Bedrock** **Nova Lite**), same task and route:
+
+| Concurrent requests | Throughput | Latency p50 | Latency p95 |
+|---|---|---|---|
+| 1 | 0.65 req/s | 1426 ms | 2292 ms |
+| 4 | 2.45 req/s | 1491 ms | 2515 ms |
+
+**PyTorch**'s thread count is taken from the container's CPU limit and inference is serialised, which raised laptop throughput from about 2.2 to 3.4 req/s and cut p95 at 8 concurrent requests from 5.0 s to 3.0 s. The **LLM** call adds about 1.31 s (p50) per request when explanations are on. These figures come from a short, billed deployment that was torn down afterwards; the stack's three-task ceiling would roughly triple the model-path throughput, which is not measured.
 
 ![Release path](docs/images/release_path.png)
 
@@ -465,8 +469,8 @@ curl -X POST $URL/predict -H "X-API-Key: $KEY" -H "Content-Type: application/jso
 
 | Request field | Rules |
 |---|---|
-| `review_text` | **required**, 1 to 5,000 characters. The only field the model uses |
-| `age`, `positive_feedback_count`, `division_name`, `department_name`, `class_name`, `customer_id` | optional; validated if present, then **ignored** (they mirror the original dataset's columns and are accepted for compatibility) |
+| `review_text` | required, 1 to 5,000 characters. The only field the model uses |
+| `age`, `positive_feedback_count`, `division_name`, `department_name`, `class_name`, `customer_id` | optional; validated if present, then ignored (they mirror the original dataset's columns and are accepted for compatibility) |
 
 ```json
 {
@@ -493,7 +497,7 @@ Unknown fields are ignored, so older clients that still send `image` or `recomme
 | Variable | Default | Purpose |
 |---|---|---|
 | `LLM_PROVIDER` | `bedrock` | `bedrock`, or `none` (always use the local fallback) |
-| `BEDROCK_MODEL_ID` | `us.amazon.nova-lite-v1:0` | **Bedrock** model; credentials come from the environment or IAM role |
+| `BEDROCK_MODEL_ID` | `us.amazon.nova-lite-v1:0` | Bedrock model; credentials come from the environment or IAM role |
 | `LLM_TIMEOUT_S` | `60` | Per-call timeout before the fallback is used |
 | `API_KEY` | unset | If set, `/predict` and `/stats` require a matching `X-API-Key` |
 
@@ -501,7 +505,7 @@ Unknown fields are ignored, so older clients that still send `image` or `recomme
 
 ```
 .
-├── README.md  Dockerfile  pyproject.toml  requirements.txt  requirements-dev.txt  .env.example
+├── README.md  Dockerfile  pyproject.toml  requirements.txt  .env.example
 ├── src/hybrid_risk/     the service: decision layer, inference, LLM explainer, API, monitoring
 ├── training/            data split, model training, decision tuning, LSTM baseline
 ├── evaluation/          test evaluation, robustness study, LLM check, sample outputs
@@ -536,7 +540,7 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 **Everything else**
 - **`tests/`**: 90 tests (decision logic, explainer validators, API, monitoring, end-to-end smoke tests on the real models).
 - **`deploy/`** and **`.github/workflows/`**: the **CloudFormation** stacks (`ecs-fargate.yaml`, `github-oidc.yaml`), CI and the deploy workflow.
-- **`docs/`**: [`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py) and [`make_badges.py`](docs/diagrams/make_badges.py) draw the diagrams, figures and badges (they need `pip install diagrams` and **Graphviz**), so the pictures stay in step with the system.
+- **`docs/`**: [`generate.py`](docs/diagrams/generate.py), [`plot_results.py`](docs/diagrams/plot_results.py) and [`make_badges.py`](docs/diagrams/make_badges.py) draw the diagrams, figures and badges (install the extra with `pip install -e ".[docs]"`, already part of `[dev]`; they also need **Graphviz**), so the pictures stay in step with the system.
 
 ## Testing
 
@@ -546,20 +550,14 @@ The dependency direction is one-way: `api` to `hybrid_inference` to (`decision`,
 
 | Decision | Why |
 |---|---|
-| Decide on probabilities, not one score | A 50/50 split between low and high is different from a confident medium; an averaged score cannot tell them apart. Conflicting evidence now has its own review trigger |
-| Fine-tuned **DistilBERT** as the main model | Frozen sentence embeddings were worse than **TF-IDF**; **fine-tuning** lifted **macro-F1** from 0.59 to 0.67 |
-| **LSTM** dropped | Its optimal blend weight was zero once **DistilBERT** existed; removing it also removed TensorFlow from serving and cut the compressed image from about 1.7 GB to about 550 MB (464 MB once the **classical model** and **scikit-learn** also left serving) |
-| No image model in the decision | An earlier **CNN** trained on **Fashion-MNIST** could not read complaint photos and, with no photo, contributed a constant that hid most high-tier cases (**recall** 0.13). No public dataset pairs complaint photos with outcomes. The model and its code were removed; a real image signal needs outcome-labelled photos |
-| Remove `Recommended IND` | It nearly encodes the rating, so it inflates scores without adding understanding |
-| Thresholds tuned for **recall** on "high" | Missing an unhappy customer costs more than a wasted review |
-| **LLM** explains, rules decide | A safety-relevant flag should never depend on a model following instructions |
-| One model, no classical blend | With each system tuned on its own **thresholds**, blending the **classical model** in did not change **macro-F1** beyond noise, so the served system is **DistilBERT** alone: one model, no tabular inputs, and no **scikit-learn** or pandas in the serving image |
-| Synthetic sarcasm data, tested on a different **LLM**'s output | Sarcasm was the largest real failure. Training on Claude-written sarcasm and testing on Nova-written sarcasm raised the share handled correctly from 37% to 70% without hurting the real test set. It is synthetic, so it is not a real-world rate |
-| A second constraint in threshold tuning | The **recall** target alone let the number of truly-high cases that would be auto-replied drift up; tuning now also caps that at 2% on validation |
-| `Age` is not a feature | Dropping it moved **macro-F1** by 0.003 (noise), and it is demographic-adjacent. Age bands are still audited |
-| Input-quality triggers | A probe battery showed heavily misspelled text and non-English text could be auto-replied. Two cheap, deterministic triggers, calibrated on real reviews where they fire under 0.1%, send such text to a person |
-| Threads from the container's CPU limit, serialised inference | **PyTorch** saw all host cores in a 2-CPU container and thrashed; sizing threads from the cgroup quota and queueing requests raised throughput from about 2.2 to 3.4 req/s |
-| **ECS Fargate** rather than **App Runner** | AWS no longer lets this account create **App Runner** services, and direct calls with root credentials cannot pass roles; the **CloudFormation** stack avoids both (details under **Deploy it** above) |
+| The model proposes, rules decide, the LLM explains | The tier, the action and the review flag come from deterministic code and are overwritten after the LLM call. A flag that matters never depends on a model following instructions, and text injected into a complaint cannot reach it. |
+| Decide on calibrated probabilities, not a single score | An averaged score cannot tell a confident "medium" from a 50/50 split between low and high. Temperature scaling on validation takes the calibration error from 0.027 to 0.008, and the thresholds apply to P(high) and P(high) + P(medium). |
+| Tune thresholds against the costly mistake, not just F1 | Under a recall target alone, the number of truly-high reviews that would be auto-replied rose from 5 to 12 on the test set. Tuning now also caps that share at 2% on validation. |
+| One model, not an ensemble | Blending a TF-IDF model in at 10% scored 0.696 against 0.689, and the 95% interval for the difference includes zero. That does not pay for a second model, tabular inputs and a heavier serving image. The classical model stays as a baseline. |
+| Keep out inputs that leak or mislead | `Recommended IND` nearly encodes the rating (it lifts the classical baseline's macro-F1 by 0.05 without any better reading of text). Age adds nothing measurable and is demographic-adjacent. An early CNN on Fashion-MNIST fed in a constant that hid most high cases (recall 0.13), so it was removed. |
+| Send text the data does not cover to a person | Heavily misspelled and non-English reviews were being auto-replied. Two cheap triggers, calibrated on real reviews where they fire under 0.1% of the time, now stop that. |
+| Test sarcasm on a different model's output than it was trained on | Training on Claude-written sarcasm and testing on Nova-written sarcasm raised the share handled correctly from 37% to 70% with no regression on the real test set. The data is synthetic, so that is a stress test and not a real-world rate. |
+| Store the weights as portable int8 | The fp32 weights are 268 MB, over GitHub's file limit. Per-row int8 with fp32 scales is 60 MB and is de-quantised at load, so nothing depends on a CPU-specific quantisation engine. |
 
 ## Limitations and next steps
 

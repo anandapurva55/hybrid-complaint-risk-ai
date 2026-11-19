@@ -5,7 +5,7 @@ Baseline models, NOT used in the decision. They exist so the reported comparison
     blended into the decision at 10% weight; evaluate_hybrid.py still reports that blend as an
     ablation, and with each system tuned on its own thresholds the blend was not distinguishable
     from DistilBERT alone, so it left the served system;
-  * the LSTM text classifier (train_rnn_model.py), which needs tensorflow (requirements-dev.txt).
+  * the LSTM text classifier (train_rnn_model.py), which needs tensorflow (pip install -e ".[baselines]").
 """
 import os
 

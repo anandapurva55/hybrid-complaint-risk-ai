@@ -14,7 +14,6 @@ evaluation/
 notebooks/
 tests/
 pyproject.toml
-requirements-dev.txt
 models/rnn_model.keras
 models/transformer_fp32/
 results/*
